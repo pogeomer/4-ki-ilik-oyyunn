@@ -10,16 +10,49 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: flex-start;
   background: rgba(9, 13, 22, 0.96); backdrop-filter: blur(10px);
-  z-index: 30; padding: 12px 12px 80px; text-align: center; overflow-y: auto;
+  z-index: 30; padding: calc(env(safe-area-inset-top, 10px) + 8px) 12px 85px; text-align: center; overflow-y: auto;
 }
 .hidden { display: none !important; }
 
+/* E-posta Giriş / Kayıt Kartı */
+.auth-card {
+  background: #162032; border: 2px solid #334155; border-radius: 16px;
+  padding: 20px 16px; width: 100%; max-width: 380px; display: flex;
+  flex-direction: column; gap: 10px; box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+}
+.auth-input {
+  width: 100%; background: #090d16; border: 1px solid #475569; color: #f8fafc;
+  padding: 11px 12px; border-radius: 9px; font-size: 0.88rem; user-select: text; -webkit-user-select: text;
+}
+.auth-input:focus { outline: none; border-color: #38bdf8; }
+.auth-msg { font-size: 0.78rem; min-height: 18px; font-weight: 600; color: #fde047; }
+.auth-btn-row { display: flex; gap: 8px; width: 100%; }
+.btn-auth {
+  flex: 1; padding: 11px; border: none; border-radius: 9px;
+  font-weight: 800; font-size: 0.85rem; cursor: pointer; color: #fff;
+}
+.btn-login { background: #2563eb; }
+.btn-signup { background: #16a34a; }
+.btn-guest {
+  background: transparent; border: 1px solid #475569; color: #94a3b8;
+  padding: 9px; border-radius: 8px; font-size: 0.76rem; font-weight: 600; cursor: pointer; margin-top: 4px;
+}
+
 /* Üst Başlık ve Hazine Barı */
 .top-header { width: 100%; max-width: 800px; margin-bottom: 6px; }
-.brand-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 0 4px; }
-h1 { font-size: clamp(1.15rem, 4.5vw, 1.65rem); color: #38bdf8; text-shadow: 0 0 15px rgba(56,189,248,0.4); }
+.brand-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 0 2px; flex-wrap: wrap; gap: 6px; }
+h1 { font-size: clamp(1.05rem, 4.2vw, 1.55rem); color: #38bdf8; text-shadow: 0 0 15px rgba(56,189,248,0.4); }
 h2 { font-size: 0.9rem; color: #fde047; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 p.sub { color: #94a3b8; margin-bottom: 10px; max-width: 580px; font-size: 0.76rem; line-height: 1.35; margin-inline: auto; }
+
+.btn-account {
+  background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8;
+  padding: 4px 9px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer;
+}
+.btn-refresh {
+  background: #1e293b; border: 1px solid #475569; color: #f8fafc;
+  padding: 4px 7px; border-radius: 8px; font-size: 0.75rem; cursor: pointer;
+}
 
 .profile-bar {
   display: flex; flex-wrap: wrap; justify-content: space-around; gap: 6px;
@@ -30,11 +63,11 @@ p.sub { color: #94a3b8; margin-bottom: 10px; max-width: 580px; font-size: 0.76re
 .gold-pill { color: #fde047; border: 1px solid rgba(253,224,71,0.3); }
 .wave-pill { color: #38bdf8; }
 .kill-pill { color: #f87171; }
-.sync-badge { font-size: 0.7rem; padding: 3px 8px; border-radius: 99px; background: #0f172a; color: #4ade80; border: 1px solid #1e293b; }
+.sync-badge { font-size: 0.68rem; padding: 3px 7px; border-radius: 99px; background: #0f172a; color: #4ade80; border: 1px solid #1e293b; }
 
 .menu-page { width: 100%; max-width: 800px; display: flex; flex-direction: column; align-items: center; }
 
-/* Alt Navigasyon Barı (4 Sekmeli) */
+/* Alt Navigasyon Barı */
 .bottom-nav {
   position: fixed; bottom: 0; left: 0; right: 0;
   height: calc(60px + env(safe-area-inset-bottom, 0px));
@@ -50,15 +83,13 @@ p.sub { color: #94a3b8; margin-bottom: 10px; max-width: 580px; font-size: 0.76re
 .nav-btn span { font-size: 1.2rem; }
 .nav-btn.active { color: #38bdf8; background: rgba(56, 189, 248, 0.08); border-top: 3px solid #38bdf8; }
 
-/* Ekipman Yuvaları (Slots) */
+/* Ekipman Yuvaları */
 .equipped-preview {
   display: flex; gap: 8px; align-items: center; justify-content: center;
   background: rgba(22, 32, 50, 0.75); border: 1px dashed #475569; border-radius: 10px;
   padding: 6px 12px; margin-bottom: 8px; font-size: 0.75rem; color: #cbd5e1;
 }
-.slots-row {
-  display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; width: 100%;
-}
+.slots-row { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; width: 100%; }
 .equip-slot {
   width: 95px; height: 78px; background: #162032; border: 2px dashed #475569;
   border-radius: 12px; display: flex; flex-direction: column; align-items: center;
@@ -119,12 +150,12 @@ p.sub { color: #94a3b8; margin-bottom: 10px; max-width: 580px; font-size: 0.76re
 
 /* Liderlik & Kimlik */
 .cloud-bar {
-  display: flex; justify-content: center; align-items: center; gap: 8px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
   background: #162032; border: 1px solid #334155; border-radius: 10px;
   padding: 10px; margin-bottom: 10px; width: 100%; font-size: 0.8rem;
 }
 .nick-group { display: flex; align-items: center; gap: 6px; }
-.nick-input { background: #090d16; border: 1px solid #475569; color: #f8fafc; padding: 6px 8px; border-radius: 6px; font-size: 0.8rem; width: 140px; font-weight: 700; }
+.nick-input { background: #090d16; border: 1px solid #475569; color: #f8fafc; padding: 6px 8px; border-radius: 6px; font-size: 0.8rem; width: 140px; font-weight: 700; user-select: text; -webkit-user-select: text; }
 .btn-small { background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; cursor: pointer; }
 .leaderboard-box { background: #162032; border: 1px solid #334155; border-radius: 10px; padding: 8px 12px; width: 100%; text-align: left; }
 .lb-row { display: flex; justify-content: space-between; font-size: 0.76rem; padding: 5px 0; border-bottom: 1px solid rgba(51,65,85,0.4); color: #cbd5e1; }
