@@ -1,6 +1,66 @@
 /**
  * ============================================================================
- * 0. SUPABASE BAĞLANTISI VE KARAKTER BAZLI KAYIT YÖNETİCİSİ
+ * 0. SENTETİK SES MOTORU (WEB AUDIO API - SIFIR HARİCİ DOSYA)
+ * ============================================================================
+ */
+class SoundFX {
+  static ctx = null;
+  static muted = false;
+
+  static init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  static play(type) {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    if (type === 'shoot') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.07);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.07);
+      osc.start(now); osc.stop(now + 0.07);
+    } else if (type === 'coin') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(980, now);
+      osc.frequency.setValueAtTime(1320, now + 0.06);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.14);
+      osc.start(now); osc.stop(now + 0.14);
+    } else if (type === 'skill') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(620, now + 0.22);
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.22);
+      osc.start(now); osc.stop(now + 0.22);
+    } else if (type === 'boss') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(95, now);
+      osc.frequency.linearRampToValueAtTime(55, now + 0.45);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.45);
+      osc.start(now); osc.stop(now + 0.45);
+    }
+  }
+}
+
+/**
+ * ============================================================================
+ * 1. SUPABASE BAĞLANTISI VE KAYIT YÖNETİCİSİ (EKİPMAN & KIŞLA DESTEKLİ)
  * ============================================================================
  */
 const SUPABASE_URL = 'https://gzwjzfkqwypspmqxncqg.supabase.co';
@@ -11,7 +71,7 @@ const supabaseClient = SUPABASE_URL.startsWith('http')
   : null;
 
 class SaveManager {
-  static STORAGE_KEY = 'CIRCLE_DEFENSE_HARDCORE_V3';
+  static STORAGE_KEY = 'CIRCLE_DEFENSE_PRO_V4';
 
   static getOrCreatePlayerId() {
     let pid = localStorage.getItem('CD_PLAYER_ID');
@@ -24,23 +84,30 @@ class SaveManager {
 
   static getDefaultUpgrades() {
     return {
-      SWORDSMAN: { dmg: 0, spd: 0, spec: 0 },
+      PALADIN: { dmg: 0, spd: 0, spec: 0 },
       ARCHER: { dmg: 0, spd: 0, spec: 0 },
       FIRE_MAGE: { dmg: 0, spd: 0, spec: 0 },
       LIGHTNING_MAGE: { dmg: 0, spd: 0, spec: 0 },
-      BASE: { hp: 0, armor: 0 }
+      BASE: { hp: 0, armor: 0 },
+      INVENTORY: { owned: [], equipped: [] } // Satın alınan ve kuşanılan ekipmanlar
     };
   }
 
   static normalizeUpgrades(rawUpg) {
     const def = this.getDefaultUpgrades();
-    if (!rawUpg || typeof rawUpg.SWORDSMAN !== 'object') return def;
+    if (!rawUpg) return def;
+    // Eski SWORDSMAN kaydı varsa PALADIN'e aktar
+    const paladinData = rawUpg.PALADIN || rawUpg.SWORDSMAN || def.PALADIN;
     return {
-      SWORDSMAN: { ...def.SWORDSMAN, ...rawUpg.SWORDSMAN },
-      ARCHER: { ...def.ARCHER, ...rawUpg.ARCHER },
-      FIRE_MAGE: { ...def.FIRE_MAGE, ...rawUpg.FIRE_MAGE },
-      LIGHTNING_MAGE: { ...def.LIGHTNING_MAGE, ...rawUpg.LIGHTNING_MAGE },
-      BASE: { ...def.BASE, ...rawUpg.BASE }
+      PALADIN: { ...def.PALADIN, ...paladinData },
+      ARCHER: { ...def.ARCHER, ...(rawUpg.ARCHER || {}) },
+      FIRE_MAGE: { ...def.FIRE_MAGE, ...(rawUpg.FIRE_MAGE || {}) },
+      LIGHTNING_MAGE: { ...def.LIGHTNING_MAGE, ...(rawUpg.LIGHTNING_MAGE || {}) },
+      BASE: { ...def.BASE, ...(rawUpg.BASE || {}) },
+      INVENTORY: {
+        owned: Array.isArray(rawUpg.INVENTORY?.owned) ? rawUpg.INVENTORY.owned : [],
+        equipped: Array.isArray(rawUpg.INVENTORY?.equipped) ? rawUpg.INVENTORY.equipped.slice(0, 3) : []
+      }
     };
   }
 
@@ -58,7 +125,7 @@ class SaveManager {
 
   static loadLocal() {
     try {
-      const raw = localStorage.getItem(this.STORAGE_KEY);
+      const raw = localStorage.getItem(this.STORAGE_KEY) || localStorage.getItem('CIRCLE_DEFENSE_HARDCORE_V3');
       if (!raw) return this.getDefaultData();
       const parsed = JSON.parse(raw);
       return {
@@ -142,7 +209,7 @@ class SaveManager {
         .select('nickname, best_wave, total_kills')
         .order('best_wave', { ascending: false })
         .order('total_kills', { ascending: false })
-        .limit(5);
+        .limit(10);
 
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -165,79 +232,110 @@ let playerSave = SaveManager.loadLocal();
 
 /**
  * ============================================================================
- * 1. KARAKTER SINIFLARI VE KIŞLA MAĞAZA AĞACI (YAVAŞ & PAHALI GELİŞİM)
+ * 2. YENİLENMİŞ 4 KARAKTER SINIFI (PALADİN DAHİL) & ÇİFT AKTİF YETENEK
  * ============================================================================
- * Başlangıç hasarları düşürüldü; oyuncunun gelişmek için mağazaya ihtiyacı var!
  */
 const HERO_CONFIGS = {
-  SWORDSMAN: {
-    type: 'SWORDSMAN', name: 'Kılıç Ustası', icon: '⚔️', color: '#38bdf8',
-    role: 'Yakın Dövüş / Tank', desc: 'Yaklaşan düşmanları biçer ve geri iter.',
-    skillName: 'Sarsıcı Kalkan', range: 135, damage: 26, cooldown: 0.85, aoeRadius: 50, stunDuration: 0, knockback: 24, projSpeed: 460
+  PALADIN: {
+    type: 'PALADIN', name: 'Kutsal Paladin', icon: '🛡️', color: '#38bdf8',
+    role: 'Kutsal Tank & Şifacı',
+    desc: 'Kutsal çekicini fırlatır, yaklaşanları iter ve her 4. vuruşunda Mevziyi otomatik iyileştirir!',
+    skill1Name: '[Q] Kutsal İnfaz', skill1Icon: '🔨',
+    skill2Name: '[E] İlahi Kalkan (4sn Dokunulmazlık)', skill2Icon: '✨',
+    range: 195, damage: 30, cooldown: 0.8, aoeRadius: 62, stunDuration: 0.3, knockback: 28, projSpeed: 500
   },
   ARCHER: {
-    type: 'ARCHER', name: 'Okçu', icon: '🏹', color: '#4ade80',
-    role: 'Uzun Menzil / Nişancı', desc: 'Uzaktaki hedeflere seri oklar gönderir.',
-    skillName: 'Ok Yağmuru', range: 330, damage: 17, cooldown: 0.44, aoeRadius: 0, stunDuration: 0, knockback: 4, projSpeed: 720
+    type: 'ARCHER', name: 'Gölge Okçusu', icon: '🏹', color: '#4ade80',
+    role: 'Uzun Menzil / Nişancı',
+    desc: 'Uzaktaki hedeflere yüksek hızda zırh delici oklar gönderir.',
+    skill1Name: '[Q] Ok Yağmuru', skill1Icon: '🏹',
+    skill2Name: '[E] Gölge Yaylımı (5sn 3x Hız)', skill2Icon: '💨',
+    range: 345, damage: 19, cooldown: 0.42, aoeRadius: 0, stunDuration: 0, knockback: 5, projSpeed: 750
   },
   FIRE_MAGE: {
     type: 'FIRE_MAGE', name: 'Ateş Büyücüsü', icon: '🔥', color: '#fb923c',
-    role: 'Alan Hasarı (AoE)', desc: 'Sürüleri yakar. Sersemlemiş düşmana %50 KRİTİK vurur!',
-    skillName: 'Kıyamet Meteoru', range: 260, damage: 34, cooldown: 1.65, aoeRadius: 75, stunDuration: 0, knockback: 8, projSpeed: 380
+    role: 'Yıkıcı Alan Hasarı (AoE)',
+    desc: 'Sürüleri yakar. Sersemlemiş düşmana %50 KRİTİK vurur!',
+    skill1Name: '[Q] Kıyamet Meteoru', skill1Icon: '☄️',
+    skill2Name: '[E] Lav Halkası (Çemberi Yakar)', skill2Icon: '🌋',
+    range: 270, damage: 36, cooldown: 1.55, aoeRadius: 80, stunDuration: 0, knockback: 10, projSpeed: 400
   },
   LIGHTNING_MAGE: {
-    type: 'LIGHTNING_MAGE', name: 'Şimşek Büyücüsü', icon: '⚡', color: '#c084fc',
-    role: 'Kitle Kontrol / Stun', desc: 'Düşman gruplarını elektrikle çarparak sersemletir.',
-    skillName: 'Yüksek Voltaj', range: 245, damage: 14, cooldown: 1.45, aoeRadius: 60, stunDuration: 1.1, knockback: 0, projSpeed: 620
-  }
-};
-
-// Her Karakter İçin Özel Mağaza Ağacı (Max 10 Seviye, Aşamalı & Pahalı)
-const SHOP_TREE = {
-  SWORDSMAN: {
-    label: '⚔️ Kılıç Ustası',
-    items: [
-      { key: 'dmg', name: 'Ağır Kılıç Eğitimi', desc: 'Seviye başı +%8 Kılıç Hasarı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
-      { key: 'spd', name: 'Çevik Bilek', desc: 'Seviye başı +%5 Saldırı Hızı', baseCost: 30, costMult: 1.7, maxLvl: 10 },
-      { key: 'spec', name: 'Sarsıcı Darbe', desc: 'Seviye başı +6 Geri İtme ve Alan Çapı', baseCost: 40, costMult: 1.8, maxLvl: 10 }
-    ]
-  },
-  ARCHER: {
-    label: '🏹 Okçu',
-    items: [
-      { key: 'dmg', name: 'Zırh Delici Oklar', desc: 'Seviye başı +%8 Ok Hasarı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
-      { key: 'spd', name: 'Seri Yay Kirişi', desc: 'Seviye başı +%5 Atış Hızı', baseCost: 30, costMult: 1.7, maxLvl: 10 },
-      { key: 'spec', name: 'Kartal Gözü', desc: 'Seviye başı +18 Menzil', baseCost: 35, costMult: 1.75, maxLvl: 10 }
-    ]
-  },
-  FIRE_MAGE: {
-    label: '🔥 Ateş Büyücüsü',
-    items: [
-      { key: 'dmg', name: 'Cehennem Ateşi', desc: 'Seviye başı +%8 Ateş Hasarı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
-      { key: 'spd', name: 'Büyü Akışı', desc: 'Seviye başı +%5 Büyü Hızı', baseCost: 30, costMult: 1.7, maxLvl: 10 },
-      { key: 'spec', name: 'Büyük Patlama', desc: 'Seviye başı +8 Patlama Çapı (AoE)', baseCost: 40, costMult: 1.8, maxLvl: 10 }
-    ]
-  },
-  LIGHTNING_MAGE: {
-    label: '⚡ Şimşek Büyücüsü',
-    items: [
-      { key: 'dmg', name: 'Yüksek Gerilim', desc: 'Seviye başı +%8 Şimşek Hasarı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
-      { key: 'spd', name: 'Fırtına Çağıran', desc: 'Seviye başı +%5 Saldırı Hızı', baseCost: 30, costMult: 1.7, maxLvl: 10 },
-      { key: 'spec', name: 'Şok Dalgaları', desc: 'Seviye başı +0.15 sn Sersemletme Süresi', baseCost: 45, costMult: 1.85, maxLvl: 10 }
-    ]
-  },
-  BASE: {
-    label: '🛡️ Mevzi & Tahkimat',
-    items: [
-      { key: 'hp', name: 'Taş Duvarlar', desc: 'Seviye başı +30 Maksimum Mevzi Canı', baseCost: 20, costMult: 1.6, maxLvl: 10 },
-      { key: 'armor', name: 'Dikenli Siper', desc: 'Mevziye gelen tüm hasarı seviye başı %4 azaltır', baseCost: 35, costMult: 1.8, maxLvl: 10 }
-    ]
+    type: 'LIGHTNING_MAGE', name: 'Fırtına Büyücüsü', icon: '⚡', color: '#c084fc',
+    role: 'Kitle Kontrol & Girdap',
+    desc: 'Düşman gruplarını elektrikle çarparak sersemletir.',
+    skill1Name: '[Q] Zincirleme Yıldırım', skill1Icon: '⚡',
+    skill2Name: '[E] Manyetik Girdap (Vakum)', skill2Icon: '🌀',
+    range: 255, damage: 16, cooldown: 1.35, aoeRadius: 65, stunDuration: 1.2, knockback: 0, projSpeed: 640
   }
 };
 
 /**
  * ============================================================================
- * 2. KONTROLCÜLER VE VARLIKLAR (HARDCORE DÜŞMAN DENGELEMESİ)
+ * 3. KIŞLA MAĞAZA AĞACI VE CEPHANELİK (EKİPMAN MARKETİ)
+ * ============================================================================
+ */
+const SHOP_TREE = {
+  PALADIN: {
+    label: '🛡️ Kutsal Paladin',
+    items: [
+      { key: 'dmg', name: 'Adalet Çekici', desc: 'Seviye başı +%8 Çekiç Hasarı', baseCost: 20, costMult: 1.6, maxLvl: 10 },
+      { key: 'spd', name: 'Kutsal Coşku', desc: 'Seviye başı +%5 Saldırı Hızı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
+      { key: 'spec', name: 'Şifa Işığı', desc: 'Her 4. vuruştaki Mevzi şifasını +2 artırır ve geri itmeyi güçlendirir', baseCost: 30, costMult: 1.75, maxLvl: 10 }
+    ]
+  },
+  ARCHER: {
+    label: '🏹 Gölge Okçusu',
+    items: [
+      { key: 'dmg', name: 'Ejder Kemiği Oklar', desc: 'Seviye başı +%8 Ok Hasarı', baseCost: 20, costMult: 1.6, maxLvl: 10 },
+      { key: 'spd', name: 'Çevik Kiriş', desc: 'Seviye başı +%5 Atış Hızı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
+      { key: 'spec', name: 'Şahin Gözü', desc: 'Seviye başı +20 Menzil', baseCost: 30, costMult: 1.7, maxLvl: 10 }
+    ]
+  },
+  FIRE_MAGE: {
+    label: '🔥 Ateş Büyücüsü',
+    items: [
+      { key: 'dmg', name: 'Güneş Çekirdeği', desc: 'Seviye başı +%8 Ateş Hasarı', baseCost: 20, costMult: 1.6, maxLvl: 10 },
+      { key: 'spd', name: 'Alev Akışı', desc: 'Seviye başı +%5 Büyü Hızı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
+      { key: 'spec', name: 'Süpernova', desc: 'Seviye başı +8 Patlama Çapı (AoE)', baseCost: 35, costMult: 1.75, maxLvl: 10 }
+    ]
+  },
+  LIGHTNING_MAGE: {
+    label: '⚡ Fırtına Büyücüsü',
+    items: [
+      { key: 'dmg', name: 'Yüksek Voltaj', desc: 'Seviye başı +%8 Şimşek Hasarı', baseCost: 20, costMult: 1.6, maxLvl: 10 },
+      { key: 'spd', name: 'İyon Fırtınası', desc: 'Seviye başı +%5 Saldırı Hızı', baseCost: 25, costMult: 1.65, maxLvl: 10 },
+      { key: 'spec', name: 'Kalıcı Felç', desc: 'Seviye başı +0.15 sn Sersemletme Süresi', baseCost: 35, costMult: 1.8, maxLvl: 10 }
+    ]
+  },
+  BASE: {
+    label: '🏰 Mevzi & Kale',
+    items: [
+      { key: 'hp', name: 'Granit Surlar', desc: 'Seviye başı +35 Maksimum Mevzi Canı', baseCost: 18, costMult: 1.55, maxLvl: 10 },
+      { key: 'armor', name: 'Büyülü Bariyer', desc: 'Mevziye gelen tüm hasarı seviye başı %4 azaltır', baseCost: 30, costMult: 1.75, maxLvl: 10 }
+    ]
+  }
+};
+
+// CEPHANELİK: Satın Alınıp Kuşanılabilen (Equip) 8 Efsanevi Ekipman
+const EQUIPMENT_ITEMS = [
+  { id: 'vampire_fang', name: '🧛 Vampir Dişi', cost: 45, desc: 'Öldürülen her 12 düşmanda bir Mevzi +6 Can yeniler.' },
+  { id: 'midas_ring', name: '💍 Midas Yüzüğü', cost: 60, desc: 'Canavarlardan altın düşme şansını %40 artırır!' },
+  { id: 'war_horn', name: '📯 Savaş Borusu', cost: 55, desc: 'Tüm takımın (Sen + 3 Bot) saldırı hızını %12 artırır.' },
+  { id: 'arcane_lens', name: '🔮 Büyü Merceği', cost: 50, desc: 'Tüm alan hasarı (AoE) çaplarını ve menzilleri %15 büyütür.' },
+  { id: 'thorn_shield', name: '🌵 Dikenli Kalkan', cost: 40, desc: 'Mevziye çarpan düşmanların hasarını %15 kırar.' },
+  { id: 'chrono_hourglass', name: '⏳ Zaman Kumsaati', cost: 75, desc: '[Q], [E] ve [R] yeteneklerinin bekleme süresini %20 kısaltır!' },
+  { id: 'giant_slayer', name: '🗡️ Dev Katili', cost: 70, desc: 'Tank ve Boss canavarlarına +%30 ekstra hasar verir!' },
+  { id: 'holy_grail', name: '🏆 Kutsal Kadeh', cost: 90, desc: 'Her dalga sonunda Mevziye otomatik +25 Can onarımı yapar.' }
+];
+
+function hasEquip(id) {
+  return playerSave.upgrades.INVENTORY.equipped.includes(id);
+}
+
+/**
+ * ============================================================================
+ * 4. KONTROLCÜLER VE VARLIKLAR
  * ============================================================================
  */
 class AIController {
@@ -278,28 +376,35 @@ class Hero {
     this.isPlayer = isPlayer;
     this.engine = engine;
     this.cooldownTimer = 0;
+    this.attackCount = 0;
+    this.buffTimer = 0; // [E] yeteneği güçlendirme süresi
     this.aimDir = { x: Math.cos(slotAngle), y: Math.sin(slotAngle) };
 
-    // BU KARAKTERİN KIŞLA'DAKİ ÖZEL YÜKSELTMELERİNİ UYGULA!
     const upg = playerSave.upgrades[this.stats.type] || { dmg: 0, spd: 0, spec: 0 };
     this.stats.damage = Math.round(this.stats.damage * (1 + upg.dmg * 0.08));
     this.stats.cooldown *= Math.pow(0.95, upg.spd);
 
-    if (this.stats.type === 'SWORDSMAN') {
+    if (this.stats.type === 'PALADIN') {
       this.stats.knockback += upg.spec * 6;
-      this.stats.aoeRadius += upg.spec * 5;
+      this.paladinHealAmount = 3 + upg.spec * 2;
     } else if (this.stats.type === 'ARCHER') {
-      this.stats.range += upg.spec * 18;
+      this.stats.range += upg.spec * 20;
     } else if (this.stats.type === 'FIRE_MAGE') {
       this.stats.aoeRadius += upg.spec * 8;
     } else if (this.stats.type === 'LIGHTNING_MAGE') {
       this.stats.stunDuration += upg.spec * 0.15;
     }
 
-    // Seçilen Lider Bonusu (+%20 Hasar)
+    // Ekipman Bonusları
+    if (hasEquip('war_horn')) this.stats.cooldown *= 0.88;
+    if (hasEquip('arcane_lens')) {
+      this.stats.range = Math.round(this.stats.range * 1.15);
+      this.stats.aoeRadius = Math.round(this.stats.aoeRadius * 1.15);
+    }
+
     if (this.isPlayer) {
-      this.stats.damage = Math.round(this.stats.damage * 1.20);
-      this.stats.cooldown *= 0.88;
+      this.stats.damage = Math.round(this.stats.damage * 1.25);
+      this.stats.cooldown *= 0.85;
     }
   }
 
@@ -309,8 +414,9 @@ class Hero {
   }
 
   getEffectiveCooldown() {
-    const formMult = this.engine.formation === 'ATTACK' ? 0.78 : 1.0;
-    return this.stats.cooldown * formMult;
+    let cd = this.stats.cooldown * (this.engine.formation === 'ATTACK' ? 0.78 : 1.0);
+    if (this.buffTimer > 0 && this.stats.type === 'ARCHER') cd *= 0.35; // Gölge Yaylımı: 3x Hız!
+    return cd;
   }
 
   updatePosition(rotationOffset) {
@@ -323,10 +429,17 @@ class Hero {
 
   update(dt, enemies, focusTarget) {
     if (this.cooldownTimer > 0) this.cooldownTimer -= dt;
+    if (this.buffTimer > 0) this.buffTimer -= dt;
+
     const dir = this.controller.getTargetDirection(this, enemies, focusTarget);
     if (dir) {
       this.aimDir = dir;
       if (this.cooldownTimer <= 0) {
+        this.attackCount++;
+        // Kutsal Paladin Pasifi: Her 4. vuruşta Mevziyi iyileştirir!
+        if (this.stats.type === 'PALADIN' && this.attackCount % 4 === 0) {
+          this.engine.healBase(this.paladinHealAmount || 3);
+        }
         this.engine.spawnProjectile(this, dir, false);
         this.cooldownTimer = this.getEffectiveCooldown();
       }
@@ -337,31 +450,37 @@ class Hero {
 class Enemy {
   constructor(x, y, type, scale) {
     this.x = x; this.y = y; this.type = type;
+    const goldChanceMult = hasEquip('midas_ring') ? 1.4 : 1.0;
 
-    // ZORLAŞTIRILMIŞ CANAVAR İSTATİSTİKLERİ VE NADİR ALTIN DÜŞME ORANLARI
     if (type === 'SWARM') {
-      // Hızlı Örümcek Sürüsü: %6 ihtimalle 1 altın
       this.hp = 68 * scale; this.speed = 104; this.radius = 12; this.color = '#f43f5e'; this.damage = 10;
-      this.goldValue = Math.random() < 0.06 ? 1 : 0;
+      this.goldValue = Math.random() < (0.07 * goldChanceMult) ? 1 : 0;
     } else if (type === 'TANK') {
-      // Zırhlı Dev: %65 ihtimalle 2-3 altın, geri itmeye dirençli
       this.hp = 540 * scale; this.speed = 42; this.radius = 24; this.color = '#a855f7'; this.damage = 30;
-      this.goldValue = Math.random() < 0.65 ? (2 + Math.floor(Math.random() * 2)) : 0;
+      this.goldValue = Math.random() < (0.65 * goldChanceMult) ? (2 + Math.floor(Math.random() * 2)) : 0;
     } else if (type === 'BOSS') {
-      // 5 Dalgada Bir Gelen Kuşatma Golemi: Kesin 12 Altın bırakır!
       this.hp = 1900 * scale; this.speed = 28; this.radius = 36; this.color = '#eab308'; this.damage = 65;
-      this.goldValue = 12;
+      this.goldValue = 14;
     } else {
-      // Normal Savaşçı: %12 ihtimalle 1 altın
       this.hp = 155 * scale; this.speed = 64; this.radius = 16; this.color = '#ef4444'; this.damage = 16;
-      this.goldValue = Math.random() < 0.12 ? 1 : 0;
+      this.goldValue = Math.random() < (0.13 * goldChanceMult) ? 1 : 0;
     }
     this.maxHp = this.hp;
     this.stunTimer = 0;
   }
 
-  update(dt) {
+  update(dt, vortexPos) {
     if (this.stunTimer > 0) { this.stunTimer -= dt; return; }
+    // Eğer Şimşek Büyücüsünün [E] Manyetik Girdabı aktifse düşmanlar girdaba çekilir!
+    if (vortexPos && this.type !== 'BOSS') {
+      const dx = vortexPos.x - this.x, dy = vortexPos.y - this.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < 260) {
+        this.x += (dx / d) * 150 * dt;
+        this.y += (dy / d) * 150 * dt;
+        return;
+      }
+    }
     const dist = Math.hypot(this.x, this.y) || 1;
     this.x -= (this.x / dist) * this.speed * dt;
     this.y -= (this.y / dist) * this.speed * dt;
@@ -370,7 +489,7 @@ class Enemy {
 
 /**
  * ============================================================================
- * 3. ANA OYUN MOTORU
+ * 5. ANA OYUN MOTORU (ÇİFT YETENEK, EKİPMAN, KOMBO VE EKRAN SARSINTISI)
  * ============================================================================
  */
 class GameEngine {
@@ -385,10 +504,18 @@ class GameEngine {
     this.formation = 'BALANCED';
     this.baseHp = 100;
     this.maxBaseHp = 100;
+    this.invulnerableTimer = 0; // Paladin [E] İlahi Kalkan süresi
+    this.lavaRingTimer = 0;     // Ateş Büyücüsü [E] Lav Halkası süresi
+    this.vortex = null;         // Şimşek Büyücüsü [E] Manyetik Girdap objesi
+
     this.kills = 0;
     this.runGoldEarned = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.screenShake = 0;
+
     this.wave = 1;
-    this.selectedClass = 'SWORDSMAN';
+    this.selectedClass = 'PALADIN';
     this.waveEnemiesRemaining = 0;
     this.bossSpawnedThisWave = false;
     this.spawnTimer = 0;
@@ -405,7 +532,8 @@ class GameEngine {
 
     this.playerController = new PlayerController();
     this.playerHero = null;
-    this.skillCooldown = 0;
+    this.skill1Cooldown = 0;
+    this.skill2Cooldown = 0;
     this.ultiCooldown = 0;
     this.paused = true;
 
@@ -432,6 +560,13 @@ class GameEngine {
     };
   }
 
+  healBase(amount) {
+    if (this.baseHp <= 0) return;
+    this.baseHp = Math.min(this.maxBaseHp, this.baseHp + amount);
+    this.addFloatingText(0, -30, `+${amount} 💚 ŞİFA`, '#4ade80');
+    this.updateHUD();
+  }
+
   setFormation(form) {
     this.formation = form;
     document.getElementById('formDef').classList.toggle('active', form === 'DEFENSE');
@@ -442,13 +577,15 @@ class GameEngine {
   }
 
   startWithHero(selectedClass, resumeState = null) {
+    if (!HERO_CONFIGS[selectedClass]) selectedClass = 'PALADIN';
     this.selectedClass = selectedClass;
     this.runGoldEarned = 0;
-    const allOrder = ['SWORDSMAN', 'ARCHER', 'FIRE_MAGE', 'LIGHTNING_MAGE'];
+    this.comboCount = 0;
+    const allOrder = ['PALADIN', 'ARCHER', 'FIRE_MAGE', 'LIGHTNING_MAGE'];
     const ordered = [selectedClass, ...allOrder.filter(c => c !== selectedClass)];
 
     const baseUpg = playerSave.upgrades.BASE || { hp: 0, armor: 0 };
-    this.maxBaseHp = 100 + (baseUpg.hp * 30);
+    this.maxBaseHp = 100 + (baseUpg.hp * 35);
     this.baseHp = resumeState ? resumeState.baseHp : this.maxBaseHp;
     this.kills = resumeState ? resumeState.kills : 0;
 
@@ -461,7 +598,8 @@ class GameEngine {
       return h;
     });
 
-    document.getElementById('skillIcon').textContent = this.playerHero.stats.icon;
+    document.getElementById('skill1Icon').textContent = this.playerHero.stats.skill1Icon;
+    document.getElementById('skill2Icon').textContent = this.playerHero.stats.skill2Icon;
     this.startWave(resumeState ? resumeState.wave : 1);
     this.paused = false;
     this.lastTime = performance.now();
@@ -487,75 +625,107 @@ class GameEngine {
 
   rotateCircle(dir) { this.targetRotationOffset += dir * (Math.PI / 4); }
 
-  triggerActiveSkill() {
-    if (this.skillCooldown > 0 || !this.playerHero || this.paused) return;
-    this.skillCooldown = 6.0;
+  getCooldownMult() {
+    return hasEquip('chrono_hourglass') ? 0.8 : 1.0;
+  }
+
+  // 1. AKTİF YETENEK [Q]
+  triggerSkill1() {
+    if (this.skill1Cooldown > 0 || !this.playerHero || this.paused) return;
+    this.skill1Cooldown = 5.5 * this.getCooldownMult();
+    SoundFX.play('skill');
+    this.screenShake = 8;
     const h = this.playerHero, dir = h.aimDir;
 
-    if (h.stats.type === 'SWORDSMAN') {
-      this.baseHp = Math.min(this.maxBaseHp, this.baseHp + 12);
-      this.updateHUD();
-      this.effects.push({ x: 0, y: 0, radius: this.safeZoneRadius + 90, color: '#38bdf8', life: 0.35 });
+    if (h.stats.type === 'PALADIN') {
+      this.healBase(20);
+      this.effects.push({ x: 0, y: 0, radius: this.safeZoneRadius + 105, color: '#38bdf8', life: 0.4 });
       for (const e of this.enemies) {
         const d = Math.hypot(e.x, e.y);
-        if (d <= this.safeZoneRadius + 90) {
-          e.hp -= h.stats.damage * 1.5; e.stunTimer = 1.4;
-          e.x += (e.x / (d || 1)) * 75; e.y += (e.y / (d || 1)) * 75;
+        if (d <= this.safeZoneRadius + 105) {
+          e.hp -= h.stats.damage * 2.0; e.stunTimer = 1.6;
+          e.x += (e.x / (d || 1)) * 95; e.y += (e.y / (d || 1)) * 95;
         }
       }
-      this.addFloatingText(0, -40, '⚔️ SARSICI KALKAN!', '#38bdf8');
+      this.addFloatingText(0, -50, '🔨 KUTSAL İNFAZ (+20 CAN)!', '#38bdf8');
     } else if (h.stats.type === 'ARCHER') {
-      for (let i = -3; i <= 4; i++) {
-        const spread = i * 0.12, cos = Math.cos(spread), sin = Math.sin(spread);
+      for (let i = -4; i <= 4; i++) {
+        const spread = i * 0.11, cos = Math.cos(spread), sin = Math.sin(spread);
         const rDir = { x: dir.x * cos - dir.y * sin, y: dir.x * sin + dir.y * cos };
         this.projectiles.push({
-          x: h.x, y: h.y, vx: rDir.x * 780, vy: rDir.y * 780,
-          distTraveled: 0, maxRange: 420, damage: h.stats.damage * 1.4,
-          aoeRadius: 40, stunDuration: 0.2, knockback: 12, color: '#4ade80', heroType: 'ARCHER'
+          x: h.x, y: h.y, vx: rDir.x * 800, vy: rDir.y * 800,
+          distTraveled: 0, maxRange: 440, damage: h.stats.damage * 1.6,
+          aoeRadius: 42, stunDuration: 0.3, knockback: 14, color: '#4ade80', heroType: 'ARCHER'
         });
       }
       this.addFloatingText(h.x, h.y - 30, '🏹 OK YAĞMURU!', '#4ade80');
     } else if (h.stats.type === 'FIRE_MAGE') {
       const targetX = h.x + dir.x * 200, targetY = h.y + dir.y * 200;
-      this.effects.push({ x: targetX, y: targetY, radius: 135, color: '#f97316', life: 0.45 });
+      this.effects.push({ x: targetX, y: targetY, radius: 150, color: '#f97316', life: 0.45 });
       for (const e of this.enemies) {
-        if (Math.hypot(e.x - targetX, e.y - targetY) <= 135 + e.radius) {
-          e.hp -= h.stats.damage * 2.2;
-          this.addFloatingText(e.x, e.y, `☄️ ${Math.round(h.stats.damage * 2.2)}!`, '#fb923c');
+        if (Math.hypot(e.x - targetX, e.y - targetY) <= 150 + e.radius) {
+          e.hp -= h.stats.damage * 2.5;
         }
       }
       this.addFloatingText(targetX, targetY - 40, '☄️ KIYAMET METEORU!', '#fb923c');
     } else if (h.stats.type === 'LIGHTNING_MAGE') {
-      const sorted = [...this.enemies].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y)).slice(0, 6);
+      const sorted = [...this.enemies].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y)).slice(0, 8);
       sorted.forEach(e => {
-        e.hp -= h.stats.damage * 1.8; e.stunTimer = 2.0;
-        this.effects.push({ x: e.x, y: e.y, radius: 45, color: '#c084fc', life: 0.3 });
+        e.hp -= h.stats.damage * 2.1; e.stunTimer = 2.2;
+        this.effects.push({ x: e.x, y: e.y, radius: 48, color: '#c084fc', life: 0.35 });
       });
       this.addFloatingText(h.x, h.y - 30, '⚡ ZİNCİRLEME YILDIRIM!', '#c084fc');
     }
   }
 
+  // 2. TAKTİKSEL SINIF YETENEĞİ [E]
+  triggerSkill2() {
+    if (this.skill2Cooldown > 0 || !this.playerHero || this.paused) return;
+    this.skill2Cooldown = 9.0 * this.getCooldownMult();
+    SoundFX.play('skill');
+    const h = this.playerHero, dir = h.aimDir;
+
+    if (h.stats.type === 'PALADIN') {
+      this.invulnerableTimer = 4.0;
+      this.addFloatingText(0, -65, '✨ İLAHİ KALKAN (4 SN DOKUNULMAZLIK)!', '#fde047');
+    } else if (h.stats.type === 'ARCHER') {
+      h.buffTimer = 5.0;
+      this.addFloatingText(h.x, h.y - 40, '💨 GÖLGE YAYLIMI (3X HIZ)!', '#4ade80');
+    } else if (h.stats.type === 'FIRE_MAGE') {
+      this.lavaRingTimer = 4.5;
+      this.addFloatingText(0, -65, '🌋 LAV HALKASI AKTİF!', '#fb923c');
+    } else if (h.stats.type === 'LIGHTNING_MAGE') {
+      this.vortex = { x: dir.x * 210, y: dir.y * 210, timer: 4.0 };
+      this.addFloatingText(this.vortex.x, this.vortex.y - 35, '🌀 MANYETİK GİRDAP!', '#c084fc');
+    }
+  }
+
+  // TAM TAKIM KOMUTAN ULTİSİ [R]
   triggerUltimate() {
     if (this.ultiCooldown > 0 || !this.playerHero || this.paused) return;
-    this.ultiCooldown = 11.0;
+    this.ultiCooldown = 12.0 * this.getCooldownMult();
+    SoundFX.play('skill');
+    this.screenShake = 14;
     for (const h of this.heroes) {
-      for (let i = 0; i < 8; i++) {
-        const ang = (i * Math.PI * 2) / 8;
+      for (let i = 0; i < 10; i++) {
+        const ang = (i * Math.PI * 2) / 10;
         this.spawnProjectile(h, { x: Math.cos(ang), y: Math.sin(ang) }, true);
       }
     }
-    this.addFloatingText(0, -60, '🔥 TAM TAKIM ULTİ ATEŞİ!', '#fde047');
+    this.addFloatingText(0, -75, '🔥 TAM TAKIM ULTİ YAYLIM ATEŞİ!', '#fde047');
   }
 
   spawnProjectile(hero, dir, isUlti) {
+    SoundFX.play('shoot');
     const s = hero.stats;
+    const comboMult = 1 + Math.min(0.5, this.comboCount * 0.02);
     this.projectiles.push({
       x: hero.x, y: hero.y,
       vx: dir.x * s.projSpeed, vy: dir.y * s.projSpeed,
       distTraveled: 0,
-      maxRange: isUlti ? hero.getEffectiveRange() * 1.3 : hero.getEffectiveRange(),
-      damage: isUlti ? s.damage * 1.4 : s.damage,
-      aoeRadius: isUlti ? Math.max(45, s.aoeRadius * 1.25) : s.aoeRadius,
+      maxRange: isUlti ? hero.getEffectiveRange() * 1.35 : hero.getEffectiveRange(),
+      damage: (isUlti ? s.damage * 1.5 : s.damage) * comboMult,
+      aoeRadius: isUlti ? Math.max(50, s.aoeRadius * 1.3) : s.aoeRadius,
       stunDuration: s.stunDuration, knockback: s.knockback, color: s.color, heroType: s.type
     });
   }
@@ -564,16 +734,14 @@ class GameEngine {
     const angle = Math.random() * Math.PI * 2;
     const spawnDist = (this.worldSize * 0.5) + 35;
     const x = Math.cos(angle) * spawnDist, y = Math.sin(angle) * spawnDist;
-
-    // Katlanarak artan zorluk çarpanı!
     const scale = Math.pow(1.26, this.wave - 1);
 
-    // Her 5 dalgada bir BOSS (Kuşatma Golemi)
     if (this.wave % 5 === 0 && !this.bossSpawnedThisWave) {
       this.bossSpawnedThisWave = true;
-      const boss = new Enemy(x, y, 'BOSS', scale);
-      this.enemies.push(boss);
-      this.addFloatingText(0, -120, '⚠️ DİKKAT: KUŞATMA GOLEMİ (BOSS) GELDİ!', '#eab308');
+      SoundFX.play('boss');
+      this.screenShake = 12;
+      this.enemies.push(new Enemy(x, y, 'BOSS', scale));
+      this.addFloatingText(0, -120, '⚠️ KUŞATMA GOLEMİ (BOSS) GELDİ!', '#eab308');
       return;
     }
 
@@ -587,30 +755,52 @@ class GameEngine {
 
   update(dt) {
     this.rotationOffset += (this.targetRotationOffset - this.rotationOffset) * Math.min(1, dt * 10);
+    if (this.screenShake > 0) this.screenShake = Math.max(0, this.screenShake - dt * 30);
 
-    if (this.skillCooldown > 0) {
-      this.skillCooldown = Math.max(0, this.skillCooldown - dt);
-      document.getElementById('btnSkill').classList.toggle('cooldown', this.skillCooldown > 0);
-      document.getElementById('skillTimer').textContent = this.skillCooldown > 0 ? this.skillCooldown.toFixed(1) + 's' : 'ÖZEL [Q]';
+    // Kombo sayacı
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) { this.comboCount = 0; this.updateHUD(); }
     }
-    if (this.ultiCooldown > 0) {
-      this.ultiCooldown = Math.max(0, this.ultiCooldown - dt);
-      document.getElementById('btnUlti').classList.toggle('cooldown', this.ultiCooldown > 0);
-      document.getElementById('ultiTimer').textContent = this.ultiCooldown > 0 ? this.ultiCooldown.toFixed(1) + 's' : 'HAZIR [R]';
+
+    // Aktif Alan Yetenekleri (İlahi Kalkan, Lav Halkası, Manyetik Girdap)
+    if (this.invulnerableTimer > 0) this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
+    if (this.lavaRingTimer > 0) {
+      this.lavaRingTimer = Math.max(0, this.lavaRingTimer - dt);
+      for (const e of this.enemies) {
+        if (Math.hypot(e.x, e.y) <= this.safeZoneRadius + 55) {
+          e.hp -= 55 * dt;
+        }
+      }
     }
+    if (this.vortex) {
+      this.vortex.timer -= dt;
+      if (this.vortex.timer <= 0) this.vortex = null;
+    }
+
+    // Buton Cooldown Güncellemeleri
+    const updateBtn = (cd, btnId, txtId, readyLbl) => {
+      document.getElementById(btnId).classList.toggle('cooldown', cd > 0);
+      document.getElementById(txtId).textContent = cd > 0 ? cd.toFixed(1) + 's' : readyLbl;
+    };
+    this.skill1Cooldown = Math.max(0, this.skill1Cooldown - dt);
+    this.skill2Cooldown = Math.max(0, this.skill2Cooldown - dt);
+    this.ultiCooldown = Math.max(0, this.ultiCooldown - dt);
+    updateBtn(this.skill1Cooldown, 'btnSkill1', 'skill1Timer', 'YETENEK 1 [Q]');
+    updateBtn(this.skill2Cooldown, 'btnSkill2', 'skill2Timer', 'YETENEK 2 [E]');
+    updateBtn(this.ultiCooldown, 'btnUlti', 'ultiTimer', 'HAZIR [R]');
 
     if (this.waveEnemiesRemaining > 0) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnEnemy();
         this.waveEnemiesRemaining--;
-        // Canavarlar çok daha seri doğar
         this.spawnTimer = Math.max(0.22, 0.95 - this.wave * 0.06);
       }
     } else if (this.enemies.length === 0) {
-      // Dalga bitirme ödülü (+3 Altın)
       playerSave.gold += 3;
       this.runGoldEarned += 3;
+      if (hasEquip('holy_grail')) this.healBase(25);
       this.openUpgradeModal();
       return;
     }
@@ -638,14 +828,21 @@ class GameEngine {
 
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt);
+      e.update(dt, this.vortex);
 
       if (e.hp <= 0) {
         if (this.focusTarget === e) this.focusTarget = null;
         this.enemies.splice(i, 1);
         this.kills++;
         playerSave.totalKills++;
+        this.comboCount++;
+        this.comboTimer = 3.5;
+
+        // Vampir Dişi Ekipmanı: Her 12 leşte +6 Can
+        if (hasEquip('vampire_fang') && this.kills % 12 === 0) this.healBase(6);
+
         if (e.goldValue > 0) {
+          SoundFX.play('coin');
           playerSave.gold += e.goldValue;
           this.runGoldEarned += e.goldValue;
           this.addFloatingText(e.x, e.y, `+${e.goldValue} 🪙`, '#fde047');
@@ -656,12 +853,20 @@ class GameEngine {
       }
 
       if (Math.hypot(e.x, e.y) <= this.safeZoneRadius) {
+        if (this.invulnerableTimer > 0) {
+          this.addFloatingText(e.x, e.y, '🛡️ KORUNDU!', '#fde047');
+          this.enemies.splice(i, 1);
+          continue;
+        }
         const armorLvl = (playerSave.upgrades.BASE && playerSave.upgrades.BASE.armor) || 0;
-        const armorMult = Math.max(0.5, 1 - armorLvl * 0.04);
+        let armorMult = Math.max(0.45, 1 - armorLvl * 0.04);
+        if (hasEquip('thorn_shield')) armorMult *= 0.85;
+
         const formMult = this.formation === 'DEFENSE' ? 0.7 : (this.formation === 'ATTACK' ? 1.25 : 1.0);
         const finalDmg = Math.max(1, Math.round(e.damage * formMult * armorMult));
 
         this.baseHp = Math.max(0, this.baseHp - finalDmg);
+        this.screenShake = 6;
         this.addFloatingText(e.x, e.y, `-${finalDmg} MEVZİ`, '#ef4444');
         if (this.focusTarget === e) this.focusTarget = null;
         this.enemies.splice(i, 1);
@@ -695,7 +900,10 @@ class GameEngine {
   hitSingleEnemy(e, p) {
     let dmg = p.damage, isCrit = false;
     if ((p.heroType === 'FIRE_MAGE' && e.stunTimer > 0) || e === this.focusTarget) {
-      dmg = Math.round(dmg * 1.4); isCrit = true;
+      dmg = Math.round(dmg * 1.45); isCrit = true;
+    }
+    if (hasEquip('giant_slayer') && (e.type === 'TANK' || e.type === 'BOSS')) {
+      dmg = Math.round(dmg * 1.3);
     }
     e.hp -= dmg;
     if (p.stunDuration > 0) {
@@ -708,7 +916,7 @@ class GameEngine {
       e.x += (e.x / d) * p.knockback * kbRes;
       e.y += (e.y / d) * p.knockback * kbRes;
     }
-    this.addFloatingText(e.x, e.y - 14, isCrit ? `💥${dmg}` : `${Math.round(dmg)}`, isCrit ? '#fde047' : '#f8fafc');
+    this.addFloatingText(e.x, e.y - 14, isCrit ? `💥${Math.round(dmg)}` : `${Math.round(dmg)}`, isCrit ? '#fde047' : '#f8fafc');
   }
 
   addFloatingText(x, y, text, color) {
@@ -720,7 +928,9 @@ class GameEngine {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
     ctx.save();
-    ctx.translate(this.centerX, this.centerY);
+    const shakeX = this.screenShake > 0 ? (Math.random() - 0.5) * this.screenShake : 0;
+    const shakeY = this.screenShake > 0 ? (Math.random() - 0.5) * this.screenShake : 0;
+    ctx.translate(this.centerX + shakeX, this.centerY + shakeY);
     ctx.scale(this.viewScale, this.viewScale);
 
     const half = this.worldSize / 2;
@@ -731,6 +941,24 @@ class GameEngine {
       ctx.beginPath(); ctx.moveTo(-half, i); ctx.lineTo(half, i); ctx.stroke();
     }
 
+    // Manyetik Girdap Çizimi
+    if (this.vortex) {
+      ctx.beginPath();
+      ctx.arc(this.vortex.x, this.vortex.y, 85, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(192, 132, 252, 0.22)';
+      ctx.fill();
+      ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 3; ctx.stroke();
+    }
+
+    // Lav Halkası Çizimi
+    if (this.lavaRingTimer > 0) {
+      ctx.beginPath();
+      ctx.arc(0, 0, this.safeZoneRadius + 48, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.25)';
+      ctx.fill();
+      ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 4; ctx.stroke();
+    }
+
     if (this.playerHero) {
       ctx.beginPath();
       ctx.arc(this.playerHero.x, this.playerHero.y, this.playerHero.getEffectiveRange(), 0, Math.PI * 2);
@@ -738,12 +966,13 @@ class GameEngine {
       ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.setLineDash([]);
     }
 
+    // Mevzi Çemberi
     ctx.beginPath();
     ctx.arc(0, 0, this.safeZoneRadius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillStyle = this.invulnerableTimer > 0 ? 'rgba(253, 224, 71, 0.3)' : 'rgba(15, 23, 42, 0.85)';
     ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = this.formation === 'DEFENSE' ? '#38bdf8' : (this.formation === 'ATTACK' ? '#f97316' : '#64748b');
+    ctx.lineWidth = this.invulnerableTimer > 0 ? 6 : 4;
+    ctx.strokeStyle = this.invulnerableTimer > 0 ? '#fde047' : (this.formation === 'DEFENSE' ? '#38bdf8' : (this.formation === 'ATTACK' ? '#f97316' : '#64748b'));
     ctx.stroke();
 
     for (const ef of this.effects) {
@@ -757,7 +986,8 @@ class GameEngine {
       ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
       ctx.fillStyle = h.stats.color; ctx.fill();
       ctx.lineWidth = h.isPlayer ? 4 : 2;
-      ctx.strokeStyle = h.isPlayer ? '#fde047' : '#0f172a'; ctx.stroke();
+      ctx.strokeStyle = h.buffTimer > 0 ? '#4ade80' : (h.isPlayer ? '#fde047' : '#0f172a');
+      ctx.stroke();
 
       ctx.font = `${h.isPlayer ? 20 : 16}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -809,7 +1039,8 @@ class GameEngine {
     document.getElementById('hpText').textContent = `${Math.ceil(this.baseHp)}/${this.maxBaseHp}`;
     document.getElementById('waveText').textContent = `DALGA ${this.wave}`;
     document.getElementById('goldText').textContent = `🪙 ${playerSave.gold}`;
-    document.getElementById('killText').textContent = `💀 ${this.kills}`;
+    const mult = (1 + Math.min(0.5, this.comboCount * 0.02)).toFixed(2);
+    document.getElementById('comboText').textContent = `🔥 x${mult}`;
   }
 
   openUpgradeModal() {
@@ -819,11 +1050,10 @@ class GameEngine {
     const container = document.getElementById('upgradeCards');
     container.innerHTML = '';
 
-    // Tur içi geçici bonuslar da dengelendi (%12-%15 civarı)
     const upgrades = [
-      { title: 'Savaş Öfkesi (Bu Tur)', icon: '👑', desc: 'Lider karakterinin hasarı bu oyunluk %15 artar.', apply: () => this.playerHero.stats.damage = Math.round(this.playerHero.stats.damage * 1.15) },
-      { title: 'Hızlı Nişan (Bu Tur)', icon: '⚡', desc: 'Tüm takımın saldırı hızı bu oyunluk %10 artar.', apply: () => this.heroes.forEach(h => h.stats.cooldown *= 0.9) },
-      { title: 'Acil Onarım (Bu Tur)', icon: '🛡️', desc: 'Mevziye 35 Can onarımı yapılır.', apply: () => { this.baseHp = Math.min(this.maxBaseHp, this.baseHp + 35); } }
+      { title: 'Komutanın Öfkesi', icon: '👑', desc: 'Lider karakterinin hasarı bu seferlik %18 artar.', apply: () => this.playerHero.stats.damage = Math.round(this.playerHero.stats.damage * 1.18) },
+      { title: 'Hızlı Nişan', icon: '⚡', desc: 'Tüm takımın saldırı hızı bu seferlik %12 artar.', apply: () => this.heroes.forEach(h => h.stats.cooldown *= 0.88) },
+      { title: 'Acil Tahkimat', icon: '🛡️', desc: 'Mevziye anında +40 Can onarımı yapılır.', apply: () => this.healBase(40) }
     ];
 
     upgrades.forEach(u => {
@@ -847,8 +1077,7 @@ class GameEngine {
     SaveManager.save(playerSave);
     document.getElementById('gameOverStats').innerHTML = `
       Ulaşılan Dalga: <b>${this.wave}</b> (Rekor: ${playerSave.bestWave})<br>
-      Bu Seferde Toplanan Altın: <b>+${this.runGoldEarned} 🪙</b> (Toplam Hazine: <b>${playerSave.gold} 🪙</b>)<br><br>
-      <i>Şimdi Kışla'ya dönüp kazandığın altınlarla karakterlerini kalıcı olarak güçlendirebilirsin!</i>
+      Bu Seferde Toplanan Altın: <b>+${this.runGoldEarned} 🪙</b> (Hazine: <b>${playerSave.gold} 🪙</b>)
     `;
     document.getElementById('gameOverScreen').classList.remove('hidden');
   }
@@ -891,14 +1120,38 @@ class GameEngine {
     window.addEventListener('pointerup', () => { draggingWheel = false; this.playerController.setAimWorldPos(null); });
     document.getElementById('btnRotLeft').onclick = () => this.rotateCircle(-1);
     document.getElementById('btnRotRight').onclick = () => this.rotateCircle(1);
-    document.getElementById('btnSkill').onclick = () => this.triggerActiveSkill();
+    document.getElementById('btnSkill1').onclick = () => this.triggerSkill1();
+    document.getElementById('btnSkill2').onclick = () => this.triggerSkill2();
     document.getElementById('btnUlti').onclick = () => this.triggerUltimate();
+
+    // Oyun İçi Ses ve Duraklatma / Güvenli Çıkış
+    document.getElementById('btnMute').onclick = () => {
+      SoundFX.muted = !SoundFX.muted;
+      document.getElementById('btnMute').textContent = SoundFX.muted ? '🔇' : '🔊';
+    };
+    document.getElementById('btnPause').onclick = () => {
+      this.paused = true;
+      document.getElementById('pauseStatsText').innerHTML = `Dalga: <b>${this.wave}</b> | Bu Tur Kazanılan: <b>+${this.runGoldEarned} 🪙</b><br>Çekilirsen kazandığın tüm altınlar hazinene eklenir!`;
+      document.getElementById('pauseModal').classList.remove('hidden');
+    };
+    document.getElementById('btnResumeGame').onclick = () => {
+      document.getElementById('pauseModal').classList.add('hidden');
+      this.lastTime = performance.now();
+      this.paused = false;
+    };
+    document.getElementById('btnRetreatGame').onclick = async () => {
+      playerSave.activeRun = null;
+      await SaveManager.save(playerSave);
+      location.reload();
+    };
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') this.rotateCircle(-1);
       if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') this.rotateCircle(1);
-      if (e.key === 'q' || e.key === 'Q') this.triggerActiveSkill();
+      if (e.key === 'q' || e.key === 'Q') this.triggerSkill1();
+      if (e.key === 'e' || e.key === 'E') this.triggerSkill2();
       if (e.key === 'r' || e.key === 'R' || e.code === 'Space') this.triggerUltimate();
+      if (e.key === 'Escape') document.getElementById('btnPause').click();
       if (e.key === '1') this.setFormation('DEFENSE');
       if (e.key === '2') this.setFormation('BALANCED');
       if (e.key === '3') this.setFormation('ATTACK');
@@ -908,45 +1161,96 @@ class GameEngine {
 
 /**
  * ============================================================================
- * 4. KIŞLA (KARAKTER BAZLI MAĞAZA) VE ARAYÜZ YÖNETİMİ
+ * 6. 4 SEKMELİ KARARGÂH, KIŞLA VE EKİPMAN MARKETİ YÖNETİMİ
  * ============================================================================
  */
 const engine = new GameEngine(document.getElementById('gameCanvas'));
-let activeShopTab = 'SWORDSMAN';
+let activeShopTab = 'PALADIN';
 
-function renderMetaUI() {
+// Alt Menü Sekme Geçişleri
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.menu-page').forEach(p => p.classList.add('hidden'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.remove('hidden');
+    renderAllMenus();
+  };
+});
+
+function renderAllMenus() {
   document.getElementById('nickInput').value = playerSave.nickname;
   document.getElementById('uiGold').textContent = playerSave.gold;
   document.getElementById('uiBestWave').textContent = playerSave.bestWave;
   document.getElementById('uiTotalKills').textContent = playerSave.totalKills;
 
+  // Savaş Sekmesi: Yarıda Kalan Oyun & Kuşanılan Ekipman Özeti
   const resumeBtn = document.getElementById('btnResumeRun');
   if (playerSave.activeRun && playerSave.activeRun.wave > 1) {
     const r = playerSave.activeRun;
+    const cls = HERO_CONFIGS[r.selectedClass] ? r.selectedClass : 'PALADIN';
     resumeBtn.classList.remove('hidden');
-    resumeBtn.textContent = `▶️ Kaldığın Savaşa Devam Et (${HERO_CONFIGS[r.selectedClass].name} - Dalga ${r.wave})`;
-    resumeBtn.onclick = () => {
-      document.getElementById('selectScreen').classList.add('hidden');
-      document.getElementById('hud').classList.remove('hidden');
-      document.getElementById('controls').classList.remove('hidden');
-      engine.startWithHero(r.selectedClass, r);
-    };
+    resumeBtn.textContent = `▶️ Kaldığın Savaşa Devam Et (${HERO_CONFIGS[cls].name} - Dalga ${r.wave})`;
+    resumeBtn.onclick = () => startGame(cls, r);
   } else {
     resumeBtn.classList.add('hidden');
   }
 
-  // Mağaza Sekmelerini Çiz (Kılıç Ustası, Okçu, Ateş, Şimşek, Mevzi)
+  const eqIds = playerSave.upgrades.INVENTORY.equipped;
+  const previewEl = document.getElementById('battleEquipPreview');
+  if (eqIds.length === 0) {
+    previewEl.innerHTML = `<span>🎒 Aktif Ekipman Yok — <b>Ekipman</b> sekmesinden yadigâr kuşanabilirsin!</span>`;
+  } else {
+    const names = eqIds.map(id => EQUIPMENT_ITEMS.find(x => x.id === id)?.name).filter(Boolean).join(' • ');
+    previewEl.innerHTML = `<span>🎒 <b>Kuşanılan Ekipmanlar:</b> ${names}</span>`;
+  }
+
+  renderHeroSelectCards();
+  renderBarracks();
+  renderArmory();
+}
+
+function startGame(cls, resumeState) {
+  document.getElementById('mainMenu').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('controls').classList.remove('hidden');
+  engine.startWithHero(cls, resumeState);
+}
+
+function renderHeroSelectCards() {
+  const cardsRoot = document.getElementById('heroCards');
+  cardsRoot.innerHTML = '';
+  Object.values(HERO_CONFIGS).forEach(cfg => {
+    const upg = playerSave.upgrades[cfg.type] || { dmg: 0, spd: 0, spec: 0 };
+    const totalLvl = upg.dmg + upg.spd + upg.spec;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-icon" style="background:${cfg.color}22; border:2px solid ${cfg.color}">${cfg.icon}</div>
+      <h3>${cfg.name} <span style="color:#fde047; font-size:0.75rem;">[Sv.${totalLvl}]</span></h3>
+      <span class="role">${cfg.role}</span>
+      <p>${cfg.desc}</p>
+      <div class="skill-tag">
+        <div><b>${cfg.skill1Name}</b></div>
+        <div><b>${cfg.skill2Name}</b></div>
+      </div>
+    `;
+    card.onclick = () => startGame(cfg.type, null);
+    cardsRoot.appendChild(card);
+  });
+}
+
+function renderBarracks() {
   const tabsEl = document.getElementById('shopTabs');
   tabsEl.innerHTML = '';
   Object.keys(SHOP_TREE).forEach(tabKey => {
     const btn = document.createElement('button');
     btn.className = 'tab-btn' + (activeShopTab === tabKey ? ' active' : '');
     btn.textContent = SHOP_TREE[tabKey].label;
-    btn.onclick = () => { activeShopTab = tabKey; renderMetaUI(); };
+    btn.onclick = () => { activeShopTab = tabKey; renderBarracks(); };
     tabsEl.appendChild(btn);
   });
 
-  // Seçili Sekmenin Geliştirme Kartlarını Çiz
   const shopGrid = document.getElementById('shopGrid');
   shopGrid.innerHTML = '';
   const currentGroup = SHOP_TREE[activeShopTab];
@@ -965,15 +1269,15 @@ function renderMetaUI() {
       <div class="lvl-bar"><div class="lvl-fill" style="width:${pct}%"></div></div>
       <span>${item.desc}</span>
       <button class="btn-buy" ${(isMax || playerSave.gold < cost) ? 'disabled' : ''}>
-        ${isMax ? 'MAKSİMUM SEVİYE' : `Geliştir (🪙 ${cost} Altın)`}
+        ${isMax ? 'MAKSİMUM SEVİYE' : `Geliştir (🪙 ${cost})`}
       </button>
     `;
     div.querySelector('button').onclick = async () => {
       if (!isMax && playerSave.gold >= cost) {
+        SoundFX.play('coin');
         playerSave.gold -= cost;
         playerSave.upgrades[activeShopTab][item.key] = lvl + 1;
-        renderMetaUI();
-        renderHeroSelectCards();
+        renderAllMenus();
         await SaveManager.save(playerSave);
       }
     };
@@ -981,28 +1285,67 @@ function renderMetaUI() {
   });
 }
 
-function renderHeroSelectCards() {
-  const cardsRoot = document.getElementById('heroCards');
-  cardsRoot.innerHTML = '';
-  Object.values(HERO_CONFIGS).forEach(cfg => {
-    const upg = playerSave.upgrades[cfg.type];
-    const totalLvl = upg.dmg + upg.spd + upg.spec;
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="card-icon" style="background:${cfg.color}22; border:2px solid ${cfg.color}">${cfg.icon}</div>
-      <h3>${cfg.name} <span style="color:#fde047; font-size:0.75rem;">[Kışla Sv.${totalLvl}]</span></h3>
-      <span class="role">${cfg.role}</span>
-      <p>${cfg.desc}</p>
-      <div class="skill-tag"><b>Özel Yetenek:</b> ${cfg.skillName}</div>
+function renderArmory() {
+  const inv = playerSave.upgrades.INVENTORY;
+  const slotsEl = document.getElementById('equippedSlots');
+  slotsEl.innerHTML = '';
+
+  for (let i = 0; i < 3; i++) {
+    const eqId = inv.equipped[i];
+    const item = EQUIPMENT_ITEMS.find(x => x.id === eqId);
+    const slot = document.createElement('div');
+    slot.className = 'equip-slot' + (item ? ' filled' : '');
+    if (item) {
+      slot.innerHTML = `<b>${item.name}</b><span style="color:#f87171; font-size:0.62rem;">[Çıkarmak İçin Dokun]</span>`;
+      slot.onclick = async () => {
+        inv.equipped.splice(i, 1);
+        renderAllMenus();
+        await SaveManager.save(playerSave);
+      };
+    } else {
+      slot.innerHTML = `<span>Boş Yuva ${i + 1}</span>`;
+    }
+    slotsEl.appendChild(slot);
+  }
+
+  const armoryGrid = document.getElementById('armoryGrid');
+  armoryGrid.innerHTML = '';
+  EQUIPMENT_ITEMS.forEach(item => {
+    const isOwned = inv.owned.includes(item.id);
+    const isEquipped = inv.equipped.includes(item.id);
+
+    const div = document.createElement('div');
+    div.className = 'shop-item';
+    let btnHtml = '';
+    if (!isOwned) {
+      btnHtml = `<button class="btn-buy" ${playerSave.gold < item.cost ? 'disabled' : ''}>Satın Al (🪙 ${item.cost})</button>`;
+    } else if (isEquipped) {
+      btnHtml = `<button class="btn-buy unequip-btn">Çıkar (Kuşanıldı)</button>`;
+    } else {
+      btnHtml = `<button class="btn-buy equipped-btn" ${inv.equipped.length >= 3 ? 'disabled' : ''}>${inv.equipped.length >= 3 ? 'Yuvalar Dolu (3/3)' : 'Kuşan (Equip)'}</button>`;
+    }
+
+    div.innerHTML = `
+      <h4>${item.name}</h4>
+      <span>${item.desc}</span>
+      ${btnHtml}
     `;
-    card.onclick = () => {
-      document.getElementById('selectScreen').classList.add('hidden');
-      document.getElementById('hud').classList.remove('hidden');
-      document.getElementById('controls').classList.remove('hidden');
-      engine.startWithHero(cfg.type, null);
+
+    div.querySelector('button').onclick = async () => {
+      if (!isOwned && playerSave.gold >= item.cost) {
+        SoundFX.play('coin');
+        playerSave.gold -= item.cost;
+        inv.owned.push(item.id);
+        if (inv.equipped.length < 3) inv.equipped.push(item.id);
+      } else if (isOwned && isEquipped) {
+        inv.equipped = inv.equipped.filter(id => id !== item.id);
+      } else if (isOwned && !isEquipped && inv.equipped.length < 3) {
+        inv.equipped.push(item.id);
+      }
+      renderAllMenus();
+      await SaveManager.save(playerSave);
     };
-    cardsRoot.appendChild(card);
+    armoryGrid.appendChild(div);
   });
 }
 
@@ -1016,10 +1359,8 @@ document.getElementById('btnSaveNick').onclick = async () => {
 };
 
 (async () => {
-  renderMetaUI();
-  renderHeroSelectCards();
+  renderAllMenus();
   playerSave = await SaveManager.syncFromCloud(playerSave);
-  renderMetaUI();
-  renderHeroSelectCards();
+  renderAllMenus();
   await SaveManager.fetchLeaderboard();
 })();
