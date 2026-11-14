@@ -3,72 +3,115 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Çember Savunması - Hardcore Roguelite</title>
+  <title>Çember Savunması - Pro RPG Edition</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- 1. ANA KARARGÂH, KIŞLA (KARAKTER MAĞAZASI) VE SEÇİM EKRANI -->
-  <div id="selectScreen" class="overlay">
-    <h1>ÇEMBER SAVUNMASI</h1>
-
-    <!-- Supabase Bulut Profil Barı -->
-    <div class="cloud-bar">
-      <div class="nick-group">
-        <span>👤 Komutan:</span>
-        <input type="text" id="nickInput" class="nick-input" maxlength="16" placeholder="Adın..." />
-        <button class="btn-small" id="btnSaveNick">Kaydet</button>
+  <!-- =====================================================================
+       ANA KARARGÂH MENÜSÜ (4 SEKMELİ PROFESYONEL MOBİL ARAYÜZ)
+       ===================================================================== -->
+  <div id="mainMenu" class="overlay">
+    <!-- Üst Sabit Profil ve Hazine Barı -->
+    <div class="top-header">
+      <div class="brand-row">
+        <h1>⚔️ ÇEMBER SAVUNMASI</h1>
+        <span id="cloudStatus" class="sync-badge">☁️ Bulut Hazır</span>
       </div>
-      <span id="cloudStatus" class="sync-badge">☁️ Bulut Hazır</span>
+      <div class="profile-bar">
+        <div class="stat-pill gold-pill">🪙 <span id="uiGold">0</span></div>
+        <div class="stat-pill wave-pill">🏆 Rekor: Dalga <span id="uiBestWave">1</span></div>
+        <div class="stat-pill kill-pill">💀 <span id="uiTotalKills">0</span></div>
+      </div>
     </div>
 
-    <!-- Oyuncu İstatistikleri -->
-    <div class="profile-bar">
-      <div class="stat-pill" style="color:#fde047;">🪙 Hazine: <span id="uiGold">0</span> Altın</div>
-      <div class="stat-pill" style="color:#38bdf8;">🏆 Rekor Dalga: <span id="uiBestWave">1</span></div>
-      <div class="stat-pill" style="color:#f87171;">💀 Toplam Leş: <span id="uiTotalKills">0</span></div>
+    <!-- SEKME 1: SAVAŞ MEYDANI (KOMUTAN SEÇİMİ) -->
+    <div id="tabBattle" class="menu-page">
+      <button id="btnResumeRun" class="btn-resume hidden"></button>
+
+      <div class="equipped-preview" id="battleEquipPreview"></div>
+
+      <h2>👑 SAVAŞA LİDERLİK EDECEK KOMUTANI SEÇ</h2>
+      <p class="sub">Seçtiğin karakter <b>Lider (+%25 Hasar + [Q] ve [E] Aktif Yetenekleri)</b> olur. Diğer 3 karakter Kışla seviyeleriyle <b>Bot</b> olarak savaşır.</p>
+      <div class="card-grid" id="heroCards"></div>
     </div>
 
-    <button id="btnResumeRun" class="btn-resume hidden"></button>
-
-    <!-- KARAKTER BAZLI KALICI MAĞAZA (KIŞLA) -->
-    <h2>🛠️ KIŞLA: KARAKTER & MEVZİ GELİŞTİRMELERİ</h2>
-    <p class="sub">Altın çok nadir düşer! Hangi karakteri geliştireceğine dikkatli karar ver.</p>
-    
-    <!-- Mağaza Sekmeleri -->
-    <div class="shop-tabs" id="shopTabs"></div>
-    <!-- Seçili Karakterin Yükseltmeleri -->
-    <div class="shop-grid" id="shopGrid"></div>
-
-    <!-- Küresel Liderlik Tablosu -->
-    <h2>🌍 KÜRESEL LİDERLİK TABLOSU (TOP 5)</h2>
-    <div class="leaderboard-box" id="leaderboardBox">
-      <div class="lb-row"><span>Liderlik tablosu yükleniyor...</span></div>
+    <!-- SEKME 2: KIŞLA (KARAKTER GÜÇLENDİRME) -->
+    <div id="tabBarracks" class="menu-page hidden">
+      <h2>🏋️ KIŞLA: SINIF & MEVZİ EĞİTİMİ</h2>
+      <p class="sub">Her sınıfın hasarını, hızını ve özel yeteneğini kalıcı olarak yükselt.</p>
+      <div class="shop-tabs" id="shopTabs"></div>
+      <div class="shop-grid" id="shopGrid"></div>
     </div>
 
-    <h2>👑 SAVAŞA GİRECEĞİN KOMUTANI SEÇ</h2>
-    <p class="sub">Seçtiğin sınıf <b>Takım Lideri (+%20 Hasar + Özel Yetenek)</b> olur. Diğer 3 karakter Kışla'daki seviyeleriyle <b>Bot</b> olarak katılır.</p>
-    <div class="card-grid" id="heroCards"></div>
+    <!-- SEKME 3: CEPHANELİK (EKİPMAN & YADİGÂR MARKETİ) -->
+    <div id="tabArmory" class="menu-page hidden">
+      <h2>🎒 AKTİF EKİPMAN YUVALARI (MAKS. 3)</h2>
+      <p class="sub">Satın aldığın ekipmanları kuşanarak takımına devasa pasif güçler kazandır!</p>
+      <div class="slots-row" id="equippedSlots"></div>
+
+      <h2>🛒 EKİPMAN & YADİGÂR MARKETİ</h2>
+      <div class="shop-grid" id="armoryGrid"></div>
+    </div>
+
+    <!-- SEKME 4: ŞÖHRET SALONU (LİDERLİK & PROFİL) -->
+    <div id="tabRank" class="menu-page hidden">
+      <h2>👤 KOMUTAN KİMLİĞİ</h2>
+      <div class="cloud-bar">
+        <div class="nick-group">
+          <span>Komutan Adı:</span>
+          <input type="text" id="nickInput" class="nick-input" maxlength="16" placeholder="Adın..." />
+          <button class="btn-small" id="btnSaveNick">Kaydet</button>
+        </div>
+      </div>
+
+      <h2>🌍 KÜRESEL LİDERLİK TABLOSU (TOP 10)</h2>
+      <div class="leaderboard-box" id="leaderboardBox">
+        <div class="lb-row"><span>Liderlik tablosu yükleniyor...</span></div>
+      </div>
+    </div>
+
+    <!-- Alt Navigasyon Çubuğu (Mobil Oyun Sekmeleri) -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-tab="tabBattle"><span>⚔️</span>Savaş</button>
+      <button class="nav-btn" data-tab="tabBarracks"><span>🏋️</span>Kışla</button>
+      <button class="nav-btn" data-tab="tabArmory"><span>🎒</span>Ekipman</button>
+      <button class="nav-btn" data-tab="tabRank"><span>🏆</span>Liderlik</button>
+    </nav>
   </div>
 
-  <!-- 2. DALGA SONU ROGUELITE (GEÇİCİ TUR İÇİ) BONUS EKRANI -->
+  <!-- =====================================================================
+       OYUN İÇİ DURAKLATMA (PAUSE) & ÇIKIŞ MODALI
+       ===================================================================== -->
+  <div id="pauseModal" class="overlay hidden" style="justify-content:center; z-index:45;">
+    <h1>⏸️ SAVAŞ DURAKLATILDI</h1>
+    <p class="sub" id="pauseStatsText">Şu ana kadar topladığın tüm altınlar güvende!</p>
+    <div style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:300px;">
+      <button class="btn-ctrl" style="padding:14px; border-color:#4ade80; font-size:0.95rem;" id="btnResumeGame">▶️ Savaşa Devam Et</button>
+      <button class="btn-ctrl" style="padding:14px; border-color:#f59e0b; font-size:0.95rem;" id="btnRetreatGame">🏳️ Karargâha Çekil (Altınları Al & Çık)</button>
+    </div>
+  </div>
+
+  <!-- DALGA SONU ROGUELITE KART SEÇİM EKRANI -->
   <div id="upgradeScreen" class="overlay hidden" style="justify-content:center;">
     <h1>DALGA TEMİZLENDİ!</h1>
-    <p class="sub">Sadece bu tur (Run) boyunca geçerli olacak taktiksel desteği seç:</p>
+    <p class="sub">Bu sefer (Run) boyunca geçerli olacak taktiksel desteği seç:</p>
     <div class="card-grid" id="upgradeCards"></div>
   </div>
 
-  <!-- 3. OYUN BİTTİ (MAĞAZAYA DÖNÜŞ) EKRANI -->
+  <!-- OYUN BİTTİ EKRANI -->
   <div id="gameOverScreen" class="overlay hidden" style="justify-content:center;">
     <h1 style="color:#ef4444;">MEVZİ YIKILDI!</h1>
     <p class="sub" id="gameOverStats"></p>
-    <button class="btn-ctrl" style="pointer-events:auto; padding:14px 28px; font-size:1rem; border-color:#fde047; background:#1e293b;" onclick="location.reload()">
-      🛠️ Kışlaya Dön & Karakterleri Güçlendir
+    <button class="btn-ctrl" style="pointer-events:auto; padding:14px 28px; font-size:1rem; border-color:#fde047;" onclick="location.reload()">
+      🛠️ Karargâha Dön (Kışla & Ekipman)
     </button>
   </div>
 
-  <!-- ÜST BİLGİ PANELİ (HUD) -->
+  <!-- =====================================================================
+       OYUN İÇİ ÜST HUD & SAĞ ÜST ÇIKIŞ/SES BUTONLARI
+       ===================================================================== -->
   <div id="hud" class="hidden">
     <div class="hud-row">
       <div class="hud-box">
@@ -76,17 +119,26 @@
         <div class="hp-bar-wrap"><div id="hpFill" class="hp-bar-fill"></div></div>
         <span id="hpText">100/100</span>
       </div>
+
       <div class="hud-box">
         <span class="badge" id="waveText">DALGA 1</span>
         <span>|</span>
         <span id="goldText" style="color:#fde047; font-weight:700;">🪙 0</span>
         <span>|</span>
-        <span id="killText">💀 0</span>
+        <span id="comboText" style="color:#fb923c; font-weight:800;">🔥 x1.0</span>
+      </div>
+
+      <!-- Oyun İçi Ses ve Duraklatma / Çıkış Butonları -->
+      <div class="hud-actions">
+        <button class="btn-icon" id="btnMute" title="Sesi Aç/Kapat">🔊</button>
+        <button class="btn-icon btn-pause" id="btnPause" title="Duraklat / Çıkış">⏸️ Çıkış</button>
       </div>
     </div>
   </div>
 
-  <!-- ALT TAKTİKSEL KONTROLLER -->
+  <!-- =====================================================================
+       ALT TAKTİKSEL KONTROLLER (2 ÖZEL YETENEK + ULTİ + FORMASYON)
+       ===================================================================== -->
   <div id="controls" class="hidden">
     <div class="formation-bar">
       <button class="btn-form" id="formDef" onclick="engine.setFormation('DEFENSE')">🛡️ Kalkan (-%30 Hasar)</button>
@@ -99,13 +151,21 @@
         <button class="btn-ctrl" id="btnRotLeft"><span>⟲ Çevir</span><span class="sub-lbl">[A]</span></button>
         <button class="btn-ctrl" id="btnRotRight"><span>Çevir ⟳</span><span class="sub-lbl">[D]</span></button>
       </div>
+
       <div class="ctrl-group">
-        <button class="btn-ctrl btn-skill" id="btnSkill">
-          <span id="skillIcon" style="font-size:1.1rem;">✨</span>
-          <span class="sub-lbl" id="skillTimer">ÖZEL [Q]</span>
+        <!-- 1. Sınıf Yeteneği [Q] -->
+        <button class="btn-ctrl btn-skill1" id="btnSkill1">
+          <span id="skill1Icon" style="font-size:1.15rem;">🔨</span>
+          <span class="sub-lbl" id="skill1Timer">YETENEK 1 [Q]</span>
         </button>
+        <!-- 2. Taktiksel Sınıf Yeteneği [E] -->
+        <button class="btn-ctrl btn-skill2" id="btnSkill2">
+          <span id="skill2Icon" style="font-size:1.15rem;">✨</span>
+          <span class="sub-lbl" id="skill2Timer">YETENEK 2 [E]</span>
+        </button>
+        <!-- Takım Ultisi [R] -->
         <button class="btn-ctrl btn-ulti" id="btnUlti">
-          <span style="font-size:0.9rem;">ULTİ</span>
+          <span style="font-size:0.88rem;">ULTİ</span>
           <span class="sub-lbl" id="ultiTimer">HAZIR [R]</span>
         </button>
       </div>
