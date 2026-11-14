@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Çember Savunması - Taktiksel Komuta</title>
+  <title>Çember Savunması - Supabase Cloud & Leaderboard</title>
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; margin: 0; padding: 0; }
     body, html {
@@ -13,45 +15,104 @@
     }
     canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
-    /* Ortak Modal Katmanları (Mobil uyumlu kaydırılabilir) */
     .overlay {
       position: absolute; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: flex-start;
-      background: rgba(9, 13, 22, 0.92); backdrop-filter: blur(8px);
-      z-index: 30; padding: 20px 14px 40px; text-align: center; overflow-y: auto;
+      background: rgba(9, 13, 22, 0.95); backdrop-filter: blur(8px);
+      z-index: 30; padding: 14px 12px 45px; text-align: center; overflow-y: auto;
     }
     .hidden { display: none !important; }
-    h1 { font-size: clamp(1.4rem, 5vw, 2.1rem); margin-top: 10px; margin-bottom: 6px; color: #38bdf8; text-shadow: 0 0 15px rgba(56,189,248,0.4); }
-    p.sub { color: #94a3b8; margin-bottom: 16px; max-width: 520px; font-size: 0.85rem; line-height: 1.4; }
+    h1 { font-size: clamp(1.3rem, 5vw, 1.9rem); margin-top: 4px; margin-bottom: 4px; color: #38bdf8; text-shadow: 0 0 15px rgba(56,189,248,0.4); }
+    h2 { font-size: 0.95rem; color: #fde047; margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    p.sub { color: #94a3b8; margin-bottom: 10px; max-width: 540px; font-size: 0.8rem; line-height: 1.35; }
 
-    /* Karakter ve Upgrade Kartları */
+    /* Kullanıcı & Bulut Durum Barı */
+    .cloud-bar {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;
+      background: #162032; border: 1px solid #334155; border-radius: 10px;
+      padding: 8px 12px; margin-bottom: 8px; width: 100%; max-width: 760px; font-size: 0.78rem;
+    }
+    .nick-group { display: flex; align-items: center; gap: 6px; }
+    .nick-input {
+      background: #090d16; border: 1px solid #475569; color: #f8fafc;
+      padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; width: 130px; font-weight: 700;
+    }
+    .btn-small {
+      background: #2563eb; color: #fff; border: none; padding: 5px 10px;
+      border-radius: 6px; font-weight: 700; font-size: 0.75rem; cursor: pointer;
+    }
+    .sync-badge { font-size: 0.72rem; padding: 3px 8px; border-radius: 99px; background: #0f172a; color: #4ade80; }
+
+    /* Oyuncu Profil & İstatistik Barı */
+    .profile-bar {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+      background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+      padding: 8px 12px; margin-bottom: 10px; width: 100%; max-width: 760px; font-size: 0.8rem;
+    }
+    .stat-pill { background: #0f172a; padding: 4px 10px; border-radius: 8px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+
+    /* Liderlik Tablosu (Leaderboard) */
+    .leaderboard-box {
+      background: #162032; border: 1px solid #334155; border-radius: 10px;
+      padding: 8px 12px; width: 100%; max-width: 760px; margin-bottom: 10px; text-align: left;
+    }
+    .lb-row {
+      display: flex; justify-content: space-between; font-size: 0.76rem;
+      padding: 4px 0; border-bottom: 1px solid rgba(51,65,85,0.4); color: #cbd5e1;
+    }
+    .lb-row:last-child { border-bottom: none; }
+
+    /* Kalıcı Karargâh (Shop) Grid */
+    .shop-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 8px; width: 100%; max-width: 760px; margin-bottom: 10px;
+    }
+    .shop-item {
+      background: #162032; border: 1px solid #334155; border-radius: 10px;
+      padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    }
+    .shop-item h4 { font-size: 0.8rem; color: #e2e8f0; }
+    .shop-item span { font-size: 0.7rem; color: #94a3b8; }
+    .btn-buy {
+      margin-top: 4px; width: 100%; background: #f59e0b; color: #090d16; border: none;
+      padding: 5px; border-radius: 6px; font-weight: 800; font-size: 0.73rem; cursor: pointer;
+    }
+    .btn-buy:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+    /* Karakter Kartları */
     .card-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
-      gap: 10px; width: 100%; max-width: 760px; margin-bottom: 20px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px; width: 100%; max-width: 760px; margin-bottom: 14px;
     }
     .card {
       background: #1e293b; border: 2px solid #334155; border-radius: 12px;
-      padding: 12px 10px; cursor: pointer; transition: 0.15s;
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 10px 8px; cursor: pointer; transition: 0.15s;
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
     }
-    .card:active, .card:hover { transform: translateY(-3px); border-color: #38bdf8; background: #26354d; }
-    .card-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
-    .card h3 { font-size: 0.95rem; color: #f1f5f9; }
-    .card .role { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; background: #0f172a; color: #38bdf8; font-weight: 600; }
-    .card p { font-size: 0.75rem; color: #cbd5e1; line-height: 1.3; }
-    .skill-tag { font-size: 0.7rem; color: #fde047; background: rgba(250, 204, 21, 0.12); padding: 4px 6px; border-radius: 6px; width: 100%; margin-top: auto; }
+    .card:active, .card:hover { transform: translateY(-2px); border-color: #38bdf8; background: #26354d; }
+    .card-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+    .card h3 { font-size: 0.88rem; color: #f1f5f9; }
+    .card .role { font-size: 0.65rem; padding: 2px 7px; border-radius: 99px; background: #0f172a; color: #38bdf8; font-weight: 600; }
+    .card p { font-size: 0.7rem; color: #cbd5e1; line-height: 1.25; }
+    .skill-tag { font-size: 0.65rem; color: #fde047; background: rgba(250, 204, 21, 0.12); padding: 3px 5px; border-radius: 5px; width: 100%; margin-top: auto; }
 
-    /* Üst HUD (Mobil Çentik Uyumlu) */
+    .btn-resume {
+      background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; border: 2px solid #86efac;
+      padding: 9px 18px; border-radius: 10px; font-weight: 800; font-size: 0.85rem;
+      cursor: pointer; margin-bottom: 8px; box-shadow: 0 0 15px rgba(34,197,94,0.4);
+    }
+
+    /* Üst HUD */
     #hud {
       position: absolute; top: env(safe-area-inset-top, 10px); left: 10px; right: 10px;
       display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 10;
     }
-    .hud-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .hud-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
     .hud-box {
-      background: rgba(15, 23, 42, 0.85); border: 1px solid #334155;
-      padding: 6px 10px; border-radius: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.8rem;
+      background: rgba(15, 23, 42, 0.88); border: 1px solid #334155;
+      padding: 6px 10px; border-radius: 10px; display: flex; align-items: center; gap: 7px; font-size: 0.78rem;
     }
-    .hp-bar-wrap { width: 95px; height: 11px; background: #090d16; border-radius: 6px; overflow: hidden; border: 1px solid #475569; }
+    .hp-bar-wrap { width: 85px; height: 11px; background: #090d16; border-radius: 6px; overflow: hidden; border: 1px solid #475569; }
     .hp-bar-fill { height: 100%; background: linear-gradient(90deg, #ef4444, #22c55e); width: 100%; transition: width 0.2s; }
     .badge { font-weight: 800; color: #fbbf24; }
 
@@ -60,19 +121,14 @@
       position: absolute; bottom: env(safe-area-inset-bottom, 12px); left: 10px; right: 10px;
       display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 10;
     }
-    .formation-bar {
-      display: flex; justify-content: center; gap: 6px; pointer-events: auto;
-    }
+    .formation-bar { display: flex; justify-content: center; gap: 6px; pointer-events: auto; }
     .btn-form {
       background: rgba(15, 23, 42, 0.9); border: 1px solid #475569; color: #cbd5e1;
-      padding: 7px 11px; border-radius: 9px; font-size: 0.75rem; font-weight: 700;
-      cursor: pointer; transition: 0.15s;
+      padding: 7px 10px; border-radius: 9px; font-size: 0.72rem; font-weight: 700; cursor: pointer;
     }
     .btn-form.active { background: #1d4ed8; border-color: #60a5fa; color: #fff; box-shadow: 0 0 12px rgba(59,130,246,0.5); }
 
-    .action-bar {
-      display: flex; justify-content: space-between; align-items: flex-end; width: 100%;
-    }
+    .action-bar { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
     .ctrl-group { display: flex; gap: 8px; pointer-events: auto; align-items: center; }
     .btn-ctrl {
       background: rgba(30, 41, 59, 0.92); border: 2px solid #475569; color: #f8fafc;
@@ -80,38 +136,61 @@
       cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
     }
     .btn-ctrl:active { transform: scale(0.93); border-color: #38bdf8; }
-
-    /* Aktif Sınıf Yeteneği ve Ulti Butonları */
     .btn-skill {
-      width: 64px; height: 64px; border-radius: 16px; justify-content: center;
+      width: 62px; height: 62px; border-radius: 16px; justify-content: center;
       background: linear-gradient(135deg, #2563eb, #7c3aed); border-color: #93c5fd;
-      box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
     }
     .btn-ulti {
-      width: 72px; height: 72px; border-radius: 50%; justify-content: center;
+      width: 70px; height: 70px; border-radius: 50%; justify-content: center;
       background: linear-gradient(135deg, #f59e0b, #ef4444); border-color: #fde047;
-      box-shadow: 0 0 18px rgba(245, 158, 11, 0.45);
     }
     .cooldown { background: #1e293b !important; border-color: #334155 !important; color: #64748b !important; box-shadow: none !important; }
-    .sub-lbl { font-size: 0.65rem; font-weight: 600; color: #e2e8f0; }
+    .sub-lbl { font-size: 0.63rem; font-weight: 600; color: #e2e8f0; }
   </style>
 </head>
 <body>
 
-  <!-- 1. KARAKTER SEÇİM EKRANI -->
+  <!-- 1. ANA MENÜ, SUPABASE PROFİL VE KARAKTER SEÇİM EKRANI -->
   <div id="selectScreen" class="overlay">
-    <h1>KOMUTANINI SEÇ</h1>
-    <p class="sub">
-      Seçtiğin sınıf <b>Takım Lideri (+%25 Hasar/Hız + Özel Yetenek)</b> olur. Diğer 3 sınıf <b>Bot</b> olarak dizilir.<br>
-      💡 <b>Taktik:</b> Ekranda bir düşmana dokunarak tüm takımı ona odaklayabilir veya parmağınla çemberi çevirebilirsin!
-    </p>
+    <h1>ÇEMBER SAVUNMASI</h1>
+
+    <!-- Supabase Bulut Profil Barı -->
+    <div class="cloud-bar">
+      <div class="nick-group">
+        <span>👤 Komutan:</span>
+        <input type="text" id="nickInput" class="nick-input" maxlength="16" placeholder="Adın..." />
+        <button class="btn-small" id="btnSaveNick">Kaydet</button>
+      </div>
+      <span id="cloudStatus" class="sync-badge">☁️ Bulut Hazır</span>
+    </div>
+
+    <!-- Oyuncu İstatistikleri -->
+    <div class="profile-bar">
+      <div class="stat-pill" style="color:#fde047;">🪙 Altın: <span id="uiGold">0</span></div>
+      <div class="stat-pill" style="color:#38bdf8;">🏆 Rekor Dalga: <span id="uiBestWave">1</span></div>
+      <div class="stat-pill" style="color:#f87171;">💀 Toplam Leş: <span id="uiTotalKills">0</span></div>
+    </div>
+
+    <button id="btnResumeRun" class="btn-resume hidden"></button>
+
+    <!-- Kalıcı Karargâh Güçlendirmeleri -->
+    <h2>🛠️ KALICI KARARGÂH GÜÇLENDİRMELERİ</h2>
+    <div class="shop-grid" id="shopGrid"></div>
+
+    <!-- Küresel Liderlik Tablosu -->
+    <h2>🌍 KÜRESEL LİDERLİK TABLOSU (TOP 5)</h2>
+    <div class="leaderboard-box" id="leaderboardBox">
+      <div class="lb-row"><span>Liderlik tablosu yükleniyor...</span></div>
+    </div>
+
+    <h2>👑 KOMUTANINI SEÇ VE SAVAŞA BAŞLA</h2>
     <div class="card-grid" id="heroCards"></div>
   </div>
 
   <!-- 2. DALGA SONU ROGUELITE GELİŞTİRME EKRANI -->
-  <div id="upgradeScreen" class="overlay hidden">
+  <div id="upgradeScreen" class="overlay hidden" style="justify-content:center;">
     <h1>DALGA TEMİZLENDİ!</h1>
-    <p class="sub">Savaş düzenini ve takımını güçlendirmek için bir geliştirmeyi seç:</p>
+    <p class="sub">İlerleyişin Supabase Bulut'a kaydedildi ☁️. Takımını güçlendirmek için bir kart seç:</p>
     <div class="card-grid" id="upgradeCards"></div>
   </div>
 
@@ -119,7 +198,7 @@
   <div id="gameOverScreen" class="overlay hidden" style="justify-content:center;">
     <h1 style="color:#ef4444;">MEVZİ DÜŞTÜ!</h1>
     <p class="sub" id="gameOverStats"></p>
-    <button class="btn-ctrl" style="pointer-events:auto; padding:14px 28px; font-size:1rem; border-color:#38bdf8;" onclick="location.reload()">Tekrar Oyna</button>
+    <button class="btn-ctrl" style="pointer-events:auto; padding:14px 28px; font-size:1rem; border-color:#38bdf8;" onclick="location.reload()">Karargâha Dön</button>
   </div>
 
   <!-- ÜST BİLGİ PANELİ (HUD) -->
@@ -133,45 +212,33 @@
       <div class="hud-box">
         <span class="badge" id="waveText">DALGA 1</span>
         <span>|</span>
+        <span id="goldText" style="color:#fde047; font-weight:700;">🪙 0</span>
+        <span>|</span>
         <span id="killText">💀 0</span>
-      </div>
-    </div>
-    <div class="hud-row" style="justify-content: center;">
-      <div class="hud-box" style="font-size:0.72rem; color:#94a3b8; padding: 3px 10px;">
-        <span>🎯 Düşmana dokun: <b>Takım Odaklanır</b> | 🔄 Çemberi sürükle: <b>Döndür</b></span>
       </div>
     </div>
   </div>
 
   <!-- ALT TAKTİKSEL KONTROLLER -->
   <div id="controls" class="hidden">
-    <!-- Savaş Düzeni (Formasyon) Seçici -->
     <div class="formation-bar">
       <button class="btn-form" id="formDef" onclick="engine.setFormation('DEFENSE')">🛡️ Kalkan (-%30 Hasar)</button>
       <button class="btn-form active" id="formBal" onclick="engine.setFormation('BALANCED')">⚖️ Dengeli</button>
       <button class="btn-form" id="formAtk" onclick="engine.setFormation('ATTACK')">⚔️ Taarruz (+%25 Hız/Menzil)</button>
     </div>
 
-    <!-- Dönüş ve Lider Yetenekleri -->
     <div class="action-bar">
       <div class="ctrl-group">
-        <button class="btn-ctrl" id="btnRotLeft">
-          <span>⟲ Çevir</span>
-          <span class="sub-lbl">[A]</span>
-        </button>
-        <button class="btn-ctrl" id="btnRotRight">
-          <span>Çevir ⟳</span>
-          <span class="sub-lbl">[D]</span>
-        </button>
+        <button class="btn-ctrl" id="btnRotLeft"><span>⟲ Çevir</span><span class="sub-lbl">[A]</span></button>
+        <button class="btn-ctrl" id="btnRotRight"><span>Çevir ⟳</span><span class="sub-lbl">[D]</span></button>
       </div>
-
       <div class="ctrl-group">
         <button class="btn-ctrl btn-skill" id="btnSkill">
           <span id="skillIcon" style="font-size:1.1rem;">✨</span>
           <span class="sub-lbl" id="skillTimer">ÖZEL [Q]</span>
         </button>
         <button class="btn-ctrl btn-ulti" id="btnUlti">
-          <span style="font-size:0.95rem;">ULTİ</span>
+          <span style="font-size:0.9rem;">ULTİ</span>
           <span class="sub-lbl" id="ultiTimer">HAZIR [R]</span>
         </button>
       </div>
@@ -183,94 +250,209 @@
 <script>
 /**
  * ============================================================================
- * 1. KARAKTER SINIFLARI VE LİDER ÖZEL YETENEKLERİ
+ * 0. SUPABASE BAĞLANTISI VE BULUT KAYIT YÖNETİCİSİ (CLOUD + LOCAL)
+ * ============================================================================
+ */
+const SUPABASE_URL = 'https://gzwjzfkqwypspmqxncqg.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_muXI5UcyGzPKnOcyB-RB2A_07QTs-fC';
+
+const isSupabaseConfigured = SUPABASE_URL.startsWith('http');
+const supabaseClient = isSupabaseConfigured
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+class SaveManager {
+  static STORAGE_KEY = 'CIRCLE_DEFENSE_SAVE_V2';
+
+  static getOrCreatePlayerId() {
+    let pid = localStorage.getItem('CD_PLAYER_ID');
+    if (!pid) {
+      pid = 'cmd_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      localStorage.setItem('CD_PLAYER_ID', pid);
+    }
+    return pid;
+  }
+
+  static getDefaultData() {
+    return {
+      playerId: this.getOrCreatePlayerId(),
+      nickname: 'Komutan_' + Math.floor(100 + Math.random() * 899),
+      gold: 0,
+      bestWave: 1,
+      totalKills: 0,
+      upgrades: { damageLvl: 0, hpLvl: 0, speedLvl: 0 },
+      activeRun: null
+    };
+  }
+
+  static loadLocal() {
+    try {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      if (!raw) return this.getDefaultData();
+      return { ...this.getDefaultData(), ...JSON.parse(raw) };
+    } catch (e) {
+      return this.getDefaultData();
+    }
+  }
+
+  static saveLocal(data) {
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  static async save(data) {
+    this.saveLocal(data);
+    const badge = document.getElementById('cloudStatus');
+
+    if (!supabaseClient) return;
+
+    try {
+      if (badge) { badge.textContent = '⏳ Buluta Kaydediliyor...'; badge.style.color = '#38bdf8'; }
+      const { error } = await supabaseClient
+        .from('player_saves')
+        .upsert({
+          player_id: data.playerId,
+          nickname: data.nickname,
+          gold: data.gold,
+          best_wave: data.bestWave,
+          total_kills: data.totalKills,
+          upgrades: data.upgrades,
+          active_run: data.activeRun,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'player_id' });
+
+      if (error) throw error;
+      if (badge) { badge.textContent = '☁️ Supabase Senkronize'; badge.style.color = '#4ade80'; }
+    } catch (err) {
+      console.warn('Supabase kayıt hatası:', err.message);
+      if (badge) { badge.textContent = '⚠️ SQL Tablosu Bekleniyor'; badge.style.color = '#fbbf24'; }
+    }
+  }
+
+  static async syncFromCloud(localData) {
+    if (!supabaseClient) return localData;
+    try {
+      const { data, error } = await supabaseClient
+        .from('player_saves')
+        .select('*')
+        .eq('player_id', localData.playerId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        const merged = {
+          playerId: data.player_id,
+          nickname: data.nickname || localData.nickname,
+          gold: Math.max(data.gold, localData.gold),
+          bestWave: Math.max(data.best_wave, localData.bestWave),
+          totalKills: Math.max(data.total_kills, localData.totalKills),
+          upgrades: data.upgrades || localData.upgrades,
+          activeRun: data.active_run || localData.activeRun
+        };
+        this.saveLocal(merged);
+        return merged;
+      } else {
+        await this.save(localData);
+        return localData;
+      }
+    } catch (e) {
+      return localData;
+    }
+  }
+
+  static async fetchLeaderboard() {
+    const box = document.getElementById('leaderboardBox');
+    if (!supabaseClient) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from('player_saves')
+        .select('nickname, best_wave, total_kills')
+        .order('best_wave', { ascending: false })
+        .order('total_kills', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        box.innerHTML = `<div class="lb-row"><span>Henüz kayıtlı komutan yok. İlk sen ol!</span></div>`;
+        return;
+      }
+      box.innerHTML = data.map((row, idx) => `
+        <div class="lb-row">
+          <span><b>#${idx + 1}</b> ${row.nickname}</span>
+          <span>🏆 Dalga <b>${row.best_wave}</b> | 💀 ${row.total_kills} Leş</span>
+        </div>
+      `).join('');
+    } catch (e) {
+      box.innerHTML = `<div class="lb-row"><span>⚠️ Liderlik tablosu için Supabase SQL Editor'de tabloyu oluşturmalısın.</span></div>`;
+    }
+  }
+}
+
+let playerSave = SaveManager.loadLocal();
+
+/**
+ * ============================================================================
+ * 1. KARAKTER SINIFLARI
  * ============================================================================
  */
 const HERO_CONFIGS = {
   SWORDSMAN: {
     type: 'SWORDSMAN', name: 'Kılıç Ustası', icon: '⚔️', color: '#38bdf8',
-    role: 'Yakın Dövüş / Tank',
-    desc: 'Yaklaşan düşmanları geniş kılıç darbeleriyle biçer ve geri iter.',
-    skillName: 'Sarsıcı Kalkan', skillDesc: 'Çember etrafındaki herkesi iter, sersemletir ve Mevziye +15 Can verir.',
-    range: 145, damage: 42, cooldown: 0.7, aoeRadius: 60, stunDuration: 0, knockback: 32, projSpeed: 480
+    role: 'Yakın Dövüş / Tank', desc: 'Yaklaşan düşmanları geniş kılıç darbeleriyle biçer ve geri iter.',
+    skillName: 'Sarsıcı Kalkan', range: 145, damage: 42, cooldown: 0.7, aoeRadius: 60, stunDuration: 0, knockback: 32, projSpeed: 480
   },
   ARCHER: {
     type: 'ARCHER', name: 'Okçu', icon: '🏹', color: '#4ade80',
-    role: 'Uzun Menzil / Keskin Nişancı',
-    desc: 'Çok uzaktaki hedeflere yüksek hızda oklar gönderir.',
-    skillName: 'Ok Yağmuru', skillDesc: 'Hedef bölgeye gökten 8 adet patlayıcı ok yağdırır.',
-    range: 360, damage: 28, cooldown: 0.32, aoeRadius: 0, stunDuration: 0, knockback: 6, projSpeed: 750
+    role: 'Uzun Menzil / Nişancı', desc: 'Çok uzaktaki hedeflere yüksek hızda oklar gönderir.',
+    skillName: 'Ok Yağmuru', range: 360, damage: 28, cooldown: 0.32, aoeRadius: 0, stunDuration: 0, knockback: 6, projSpeed: 750
   },
   FIRE_MAGE: {
     type: 'FIRE_MAGE', name: 'Ateş Büyücüsü', icon: '🔥', color: '#fb923c',
-    role: 'Alan Hasarı (AoE)',
-    desc: 'Ateş toplarıyla sürüleri yakar. Sersemlemiş düşmana %50 KRİTİK vurur!',
-    skillName: 'Kıyamet Meteoru', skillDesc: 'Hedef yöne devasa bir meteor indirerek tüm alanı kül eder.',
-    range: 280, damage: 52, cooldown: 1.35, aoeRadius: 95, stunDuration: 0, knockback: 12, projSpeed: 390
+    role: 'Alan Hasarı (AoE)', desc: 'Sürüleri yakar. Sersemlemiş düşmana %50 KRİTİK vurur!',
+    skillName: 'Kıyamet Meteoru', range: 280, damage: 52, cooldown: 1.35, aoeRadius: 95, stunDuration: 0, knockback: 12, projSpeed: 390
   },
   LIGHTNING_MAGE: {
     type: 'LIGHTNING_MAGE', name: 'Şimşek Büyücüsü', icon: '⚡', color: '#c084fc',
-    role: 'Kitle Kontrol / Stun',
-    desc: 'Düşman gruplarını elektrikle çarparak 1.5 sn sersemletir.',
-    skillName: 'Yüksek Voltaj', skillDesc: 'En yakın 6 düşmana anında sekerek çarpan yıldırım gönderir.',
-    range: 260, damage: 22, cooldown: 1.2, aoeRadius: 70, stunDuration: 1.5, knockback: 0, projSpeed: 640
+    role: 'Kitle Kontrol / Stun', desc: 'Düşman gruplarını elektrikle çarparak 1.5 sn sersemletir.',
+    skillName: 'Yüksek Voltaj', range: 260, damage: 22, cooldown: 1.2, aoeRadius: 70, stunDuration: 1.5, knockback: 0, projSpeed: 640
   }
 };
 
 /**
  * ============================================================================
- * 2. KONTROLCÜ KATMANI (KOMUTAN ODAKLI AI + OYUNCU KONTROLÜ)
+ * 2. KONTROLCÜLER VE VARLIKLAR
  * ============================================================================
  */
 class AIController {
   getTargetDirection(hero, enemies, focusTarget) {
-    // Komutanın (Oyuncunun) işaretlediği odak hedef menzildeyse öncelik onundur!
     if (focusTarget && focusTarget.hp > 0) {
-      const distToFocus = Math.hypot(focusTarget.x - hero.x, focusTarget.y - hero.y);
-      if (distToFocus <= hero.getEffectiveRange()) {
-        return { x: (focusTarget.x - hero.x) / distToFocus, y: (focusTarget.y - hero.y) / distToFocus };
-      }
+      const d = Math.hypot(focusTarget.x - hero.x, focusTarget.y - hero.y);
+      if (d <= hero.getEffectiveRange()) return { x: (focusTarget.x - hero.x) / d, y: (focusTarget.y - hero.y) / d };
     }
-
-    let target = null;
-    let minDistance = hero.getEffectiveRange();
+    let target = null, minDistance = hero.getEffectiveRange();
     for (const e of enemies) {
       const dist = Math.hypot(e.x - hero.x, e.y - hero.y);
-      if (dist <= minDistance) {
-        minDistance = dist;
-        target = e;
-      }
+      if (dist <= minDistance) { minDistance = dist; target = e; }
     }
     if (!target) return null;
-    const dx = target.x - hero.x;
-    const dy = target.y - hero.y;
-    const mag = Math.hypot(dx, dy) || 1;
+    const dx = target.x - hero.x, dy = target.y - hero.y, mag = Math.hypot(dx, dy) || 1;
     return { x: dx / mag, y: dy / mag };
   }
 }
 
 class PlayerController {
-  constructor() {
-    this.aimPos = null; // Oyun dünyası (World) koordinatlarında hedef
-    this.aiFallback = new AIController();
-  }
+  constructor() { this.aimPos = null; this.aiFallback = new AIController(); }
   setAimWorldPos(pos) { this.aimPos = pos; }
   getTargetDirection(hero, enemies, focusTarget) {
     if (this.aimPos) {
-      const dx = this.aimPos.x - hero.x;
-      const dy = this.aimPos.y - hero.y;
-      const mag = Math.hypot(dx, dy) || 1;
+      const dx = this.aimPos.x - hero.x, dy = this.aimPos.y - hero.y, mag = Math.hypot(dx, dy) || 1;
       return { x: dx / mag, y: dy / mag };
     }
     return this.aiFallback.getTargetDirection(hero, enemies, focusTarget);
   }
 }
 
-/**
- * ============================================================================
- * 3. OYUN VARLIKLARI (HERO & ENEMY)
- * ============================================================================
- */
 class Hero {
   constructor(slotAngle, stats, controller, isPlayer, engine) {
     this.slotAngle = slotAngle;
@@ -282,7 +464,11 @@ class Hero {
     this.cooldownTimer = 0;
     this.aimDir = { x: Math.cos(slotAngle), y: Math.sin(slotAngle) };
 
-    // SEÇİLEN ANA KARAKTERE LİDERLİK BONUSU (+%25 Hasar ve Saldırı Hızı)
+    const dmgBonus = 1 + (playerSave.upgrades.damageLvl * 0.10);
+    const spdBonus = Math.pow(0.94, playerSave.upgrades.speedLvl);
+    this.stats.damage = Math.round(this.stats.damage * dmgBonus);
+    this.stats.cooldown *= spdBonus;
+
     if (this.isPlayer) {
       this.stats.damage = Math.round(this.stats.damage * 1.25);
       this.stats.cooldown *= 0.8;
@@ -324,11 +510,11 @@ class Enemy {
   constructor(x, y, type, scale) {
     this.x = x; this.y = y; this.type = type;
     if (type === 'SWARM') {
-      this.hp = 32 * scale; this.speed = 92; this.radius = 12; this.color = '#f43f5e'; this.damage = 7;
+      this.hp = 32 * scale; this.speed = 92; this.radius = 12; this.color = '#f43f5e'; this.damage = 7; this.goldValue = 1;
     } else if (type === 'TANK') {
-      this.hp = 260 * scale; this.speed = 38; this.radius = 25; this.color = '#a855f7'; this.damage = 24;
+      this.hp = 260 * scale; this.speed = 38; this.radius = 25; this.color = '#a855f7'; this.damage = 24; this.goldValue = 8;
     } else {
-      this.hp = 70 * scale; this.speed = 58; this.radius = 16; this.color = '#ef4444'; this.damage = 12;
+      this.hp = 70 * scale; this.speed = 58; this.radius = 16; this.color = '#ef4444'; this.damage = 12; this.goldValue = 2;
     }
     this.maxHp = this.hp;
     this.stunTimer = 0;
@@ -344,26 +530,24 @@ class Enemy {
 
 /**
  * ============================================================================
- * 4. ANA OYUN MOTORU (RESPONSIVE KAMERA & TAKTİKSEL SAVAŞ)
+ * 3. ANA OYUN MOTORU
  * ============================================================================
  */
 class GameEngine {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-
-    // Sabit Sanal Dünya Boyutu (Her telefona tam sığması için 850x850 birim)
     this.worldSize = 850;
     this.viewScale = 1;
-    this.centerX = 0;
-    this.centerY = 0;
+    this.centerX = 0; this.centerY = 0;
 
     this.safeZoneRadius = 90;
-    this.formation = 'BALANCED'; // 'DEFENSE' | 'BALANCED' | 'ATTACK'
+    this.formation = 'BALANCED';
     this.baseHp = 100;
     this.maxBaseHp = 100;
     this.kills = 0;
     this.wave = 1;
+    this.selectedClass = 'SWORDSMAN';
     this.waveEnemiesRemaining = 0;
     this.spawnTimer = 0;
 
@@ -375,7 +559,7 @@ class GameEngine {
     this.projectiles = [];
     this.effects = [];
     this.floatingTexts = [];
-    this.focusTarget = null; // Komutanın işaretlediği odak düşman
+    this.focusTarget = null;
 
     this.playerController = new PlayerController();
     this.playerHero = null;
@@ -393,18 +577,17 @@ class GameEngine {
     this.canvas.width = window.innerWidth * dpr;
     this.canvas.height = window.innerHeight * dpr;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
     this.centerX = window.innerWidth / 2;
     this.centerY = window.innerHeight / 2;
-    // En dar kenara göre tüm savaş alanını (850 birim) ekrana tam sığdır!
     this.viewScale = Math.min(window.innerWidth, window.innerHeight) / this.worldSize;
   }
 
   screenToWorld(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    const sx = clientX - rect.left - this.centerX;
-    const sy = clientY - rect.top - this.centerY;
-    return { x: sx / this.viewScale, y: sy / this.viewScale };
+    return {
+      x: (clientX - rect.left - this.centerX) / this.viewScale,
+      y: (clientY - rect.top - this.centerY) / this.viewScale
+    };
   }
 
   setFormation(form) {
@@ -412,14 +595,18 @@ class GameEngine {
     document.getElementById('formDef').classList.toggle('active', form === 'DEFENSE');
     document.getElementById('formBal').classList.toggle('active', form === 'BALANCED');
     document.getElementById('formAtk').classList.toggle('active', form === 'ATTACK');
-
     const msg = form === 'DEFENSE' ? '🛡️ KALKAN DÜZENİ!' : (form === 'ATTACK' ? '⚔️ TAARRUZ DÜZENİ!' : '⚖️ DENGELİ DÜZEN');
     this.addFloatingText(0, -this.safeZoneRadius - 20, msg, '#38bdf8');
   }
 
-  startWithHero(selectedClass) {
+  startWithHero(selectedClass, resumeState = null) {
+    this.selectedClass = selectedClass;
     const allOrder = ['SWORDSMAN', 'ARCHER', 'FIRE_MAGE', 'LIGHTNING_MAGE'];
     const ordered = [selectedClass, ...allOrder.filter(c => c !== selectedClass)];
+
+    this.maxBaseHp = 100 + (playerSave.upgrades.hpLvl * 25);
+    this.baseHp = resumeState ? resumeState.baseHp : this.maxBaseHp;
+    this.kills = resumeState ? resumeState.kills : 0;
 
     this.heroes = ordered.map((cls, idx) => {
       const angle = (idx * Math.PI) / 2;
@@ -430,8 +617,13 @@ class GameEngine {
       return h;
     });
 
+    if (resumeState && resumeState.wave > 1) {
+      const mult = Math.pow(1.12, resumeState.wave - 1);
+      this.heroes.forEach(h => h.stats.damage = Math.round(h.stats.damage * mult));
+    }
+
     document.getElementById('skillIcon').textContent = this.playerHero.stats.icon;
-    this.startWave(1);
+    this.startWave(resumeState ? resumeState.wave : 1);
     this.paused = false;
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.loop(t));
@@ -441,41 +633,40 @@ class GameEngine {
     this.wave = waveNum;
     this.waveEnemiesRemaining = 10 + waveNum * 6;
     this.spawnTimer = 0.4;
+
+    if (this.wave > playerSave.bestWave) playerSave.bestWave = this.wave;
+    playerSave.activeRun = {
+      selectedClass: this.selectedClass,
+      wave: this.wave,
+      baseHp: this.baseHp,
+      kills: this.kills
+    };
+    SaveManager.save(playerSave);
     this.updateHUD();
   }
 
-  rotateCircle(dir) {
-    this.targetRotationOffset += dir * (Math.PI / 4); // 45'er derece hassas dönüş
-  }
+  rotateCircle(dir) { this.targetRotationOffset += dir * (Math.PI / 4); }
 
-  // ANA KARAKTERE ÖZEL AKTİF YETENEK (Q)
   triggerActiveSkill() {
     if (this.skillCooldown > 0 || !this.playerHero || this.paused) return;
     this.skillCooldown = 5.0;
-    const h = this.playerHero;
-    const dir = h.aimDir;
+    const h = this.playerHero, dir = h.aimDir;
 
     if (h.stats.type === 'SWORDSMAN') {
-      // Sarsıcı Kalkan: Çember etrafındaki herkesi iter + sersemletir + 15 Can yeniler
       this.baseHp = Math.min(this.maxBaseHp, this.baseHp + 15);
       this.updateHUD();
       this.effects.push({ x: 0, y: 0, radius: this.safeZoneRadius + 95, color: '#38bdf8', life: 0.35 });
       for (const e of this.enemies) {
         const d = Math.hypot(e.x, e.y);
         if (d <= this.safeZoneRadius + 95) {
-          e.hp -= h.stats.damage * 1.6;
-          e.stunTimer = 1.6;
-          e.x += (e.x / (d || 1)) * 90;
-          e.y += (e.y / (d || 1)) * 90;
+          e.hp -= h.stats.damage * 1.6; e.stunTimer = 1.6;
+          e.x += (e.x / (d || 1)) * 90; e.y += (e.y / (d || 1)) * 90;
         }
       }
       this.addFloatingText(0, -40, '⚔️ SARSICI KALKAN (+15 CAN)!', '#38bdf8');
-
     } else if (h.stats.type === 'ARCHER') {
-      // Ok Yağmuru: Baktığı yöne 8 adet patlayıcı ok yağdırır
       for (let i = -3; i <= 4; i++) {
-        const spread = i * 0.12;
-        const cos = Math.cos(spread), sin = Math.sin(spread);
+        const spread = i * 0.12, cos = Math.cos(spread), sin = Math.sin(spread);
         const rDir = { x: dir.x * cos - dir.y * sin, y: dir.x * sin + dir.y * cos };
         this.projectiles.push({
           x: h.x, y: h.y, vx: rDir.x * 780, vy: rDir.y * 780,
@@ -484,11 +675,8 @@ class GameEngine {
         });
       }
       this.addFloatingText(h.x, h.y - 30, '🏹 OK YAĞMURU!', '#4ade80');
-
     } else if (h.stats.type === 'FIRE_MAGE') {
-      // Kıyamet Meteoru: Hedef noktaya dev patlama
-      const targetX = h.x + dir.x * 210;
-      const targetY = h.y + dir.y * 210;
+      const targetX = h.x + dir.x * 210, targetY = h.y + dir.y * 210;
       this.effects.push({ x: targetX, y: targetY, radius: 145, color: '#f97316', life: 0.45 });
       for (const e of this.enemies) {
         if (Math.hypot(e.x - targetX, e.y - targetY) <= 145 + e.radius) {
@@ -497,24 +685,19 @@ class GameEngine {
         }
       }
       this.addFloatingText(targetX, targetY - 40, '☄️ KIYAMET METEORU!', '#fb923c');
-
     } else if (h.stats.type === 'LIGHTNING_MAGE') {
-      // Yüksek Voltaj: En yakın 6 düşmana zincirleme yıldırım
       const sorted = [...this.enemies].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y)).slice(0, 6);
       sorted.forEach(e => {
-        e.hp -= h.stats.damage * 2.0;
-        e.stunTimer = 2.2;
+        e.hp -= h.stats.damage * 2.0; e.stunTimer = 2.2;
         this.effects.push({ x: e.x, y: e.y, radius: 45, color: '#c084fc', life: 0.3 });
       });
       this.addFloatingText(h.x, h.y - 30, '⚡ ZİNCİRLEME YILDIRIM!', '#c084fc');
     }
   }
 
-  // TAKIM KOMUTANI ULTİSİ (R)
   triggerUltimate() {
     if (this.ultiCooldown > 0 || !this.playerHero || this.paused) return;
     this.ultiCooldown = 9.0;
-    // Sadece lider değil, 4 karakterin tamamı aynı anda 8 yöne yaylım ateşi açar!
     for (const h of this.heroes) {
       for (let i = 0; i < 8; i++) {
         const ang = (i * Math.PI * 2) / 8;
@@ -533,24 +716,18 @@ class GameEngine {
       maxRange: isUlti ? hero.getEffectiveRange() * 1.35 : hero.getEffectiveRange(),
       damage: isUlti ? s.damage * 1.5 : s.damage,
       aoeRadius: isUlti ? Math.max(50, s.aoeRadius * 1.3) : s.aoeRadius,
-      stunDuration: s.stunDuration,
-      knockback: s.knockback,
-      color: s.color,
-      heroType: s.type
+      stunDuration: s.stunDuration, knockback: s.knockback, color: s.color, heroType: s.type
     });
   }
 
   spawnEnemy() {
     const angle = Math.random() * Math.PI * 2;
     const spawnDist = (this.worldSize * 0.5) + 30;
-    const x = Math.cos(angle) * spawnDist;
-    const y = Math.sin(angle) * spawnDist;
-
+    const x = Math.cos(angle) * spawnDist, y = Math.sin(angle) * spawnDist;
     let type = 'NORMAL';
     const r = Math.random();
     if (this.wave >= 2 && r < 0.35) type = 'SWARM';
     if (this.wave >= 3 && r > 0.82) type = 'TANK';
-
     const scale = 1 + (this.wave - 1) * 0.18;
     this.enemies.push(new Enemy(x, y, type, scale));
   }
@@ -558,23 +735,17 @@ class GameEngine {
   update(dt) {
     this.rotationOffset += (this.targetRotationOffset - this.rotationOffset) * Math.min(1, dt * 10);
 
-    // Yetenek Sayaçları
     if (this.skillCooldown > 0) {
       this.skillCooldown = Math.max(0, this.skillCooldown - dt);
-      const btn = document.getElementById('btnSkill');
-      const txt = document.getElementById('skillTimer');
-      btn.classList.toggle('cooldown', this.skillCooldown > 0);
-      txt.textContent = this.skillCooldown > 0 ? this.skillCooldown.toFixed(1) + 's' : 'ÖZEL [Q]';
+      document.getElementById('btnSkill').classList.toggle('cooldown', this.skillCooldown > 0);
+      document.getElementById('skillTimer').textContent = this.skillCooldown > 0 ? this.skillCooldown.toFixed(1) + 's' : 'ÖZEL [Q]';
     }
     if (this.ultiCooldown > 0) {
       this.ultiCooldown = Math.max(0, this.ultiCooldown - dt);
-      const btn = document.getElementById('btnUlti');
-      const txt = document.getElementById('ultiTimer');
-      btn.classList.toggle('cooldown', this.ultiCooldown > 0);
-      txt.textContent = this.ultiCooldown > 0 ? this.ultiCooldown.toFixed(1) + 's' : 'HAZIR [R]';
+      document.getElementById('btnUlti').classList.toggle('cooldown', this.ultiCooldown > 0);
+      document.getElementById('ultiTimer').textContent = this.ultiCooldown > 0 ? this.ultiCooldown.toFixed(1) + 's' : 'HAZIR [R]';
     }
 
-    // Dalga Spawner
     if (this.waveEnemiesRemaining > 0) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
@@ -616,6 +787,10 @@ class GameEngine {
         if (this.focusTarget === e) this.focusTarget = null;
         this.enemies.splice(i, 1);
         this.kills++;
+        playerSave.totalKills++;
+        playerSave.gold += e.goldValue;
+        this.addFloatingText(e.x, e.y, `+${e.goldValue} 🪙`, '#fde047');
+        SaveManager.saveLocal(playerSave);
         this.updateHUD();
         continue;
       }
@@ -655,19 +830,15 @@ class GameEngine {
   }
 
   hitSingleEnemy(e, p) {
-    let dmg = p.damage;
-    let isCrit = false;
-    // Şimşek sersemletmesi + Ateş büyücüsü kombosu veya Odak Hedef bonusu
+    let dmg = p.damage, isCrit = false;
     if ((p.heroType === 'FIRE_MAGE' && e.stunTimer > 0) || e === this.focusTarget) {
-      dmg = Math.round(dmg * 1.4);
-      isCrit = true;
+      dmg = Math.round(dmg * 1.4); isCrit = true;
     }
     e.hp -= dmg;
     if (p.stunDuration > 0) e.stunTimer = Math.max(e.stunDuration, e.stunTimer);
     if (p.knockback > 0) {
       const d = Math.hypot(e.x, e.y) || 1;
-      e.x += (e.x / d) * p.knockback;
-      e.y += (e.y / d) * p.knockback;
+      e.x += (e.x / d) * p.knockback; e.y += (e.y / d) * p.knockback;
     }
     this.addFloatingText(e.x, e.y - 14, isCrit ? `💥${dmg}` : `${Math.round(dmg)}`, isCrit ? '#fde047' : '#f8fafc');
   }
@@ -681,11 +852,9 @@ class GameEngine {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
     ctx.save();
-    // Kamerayı merkeze al ve mobil ekrana tam sığacak şekilde ölçekle!
     ctx.translate(this.centerX, this.centerY);
     ctx.scale(this.viewScale, this.viewScale);
 
-    // Savaş Meydanı Izgarası (-425 ile +425 arası)
     const half = this.worldSize / 2;
     ctx.strokeStyle = 'rgba(51, 65, 85, 0.3)';
     ctx.lineWidth = 1.5;
@@ -694,18 +863,13 @@ class GameEngine {
       ctx.beginPath(); ctx.moveTo(-half, i); ctx.lineTo(half, i); ctx.stroke();
     }
 
-    // Seçili Komutanın Menzil Halkası
     if (this.playerHero) {
       ctx.beginPath();
       ctx.arc(this.playerHero.x, this.playerHero.y, this.playerHero.getEffectiveRange(), 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(250, 204, 21, 0.18)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([8, 8]);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.setLineDash([]);
     }
 
-    // Savunma Çemberi (Formasyona göre renk değiştirir)
     ctx.beginPath();
     ctx.arc(0, 0, this.safeZoneRadius, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
@@ -714,31 +878,21 @@ class GameEngine {
     ctx.strokeStyle = this.formation === 'DEFENSE' ? '#38bdf8' : (this.formation === 'ATTACK' ? '#f97316' : '#64748b');
     ctx.stroke();
 
-    // Efektler
     for (const ef of this.effects) {
-      ctx.beginPath();
-      ctx.arc(ef.x, ef.y, ef.radius, 0, Math.PI * 2);
-      ctx.fillStyle = ef.color + '44';
-      ctx.fill();
-      ctx.strokeStyle = ef.color;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(ef.x, ef.y, ef.radius, 0, Math.PI * 2);
+      ctx.fillStyle = ef.color + '44'; ctx.fill();
+      ctx.strokeStyle = ef.color; ctx.lineWidth = 2.5; ctx.stroke();
     }
 
-    // Kahramanlar (Lider daha büyük ve altın taçlı)
     for (const h of this.heroes) {
       const r = h.isPlayer ? 24 : 19;
-      ctx.beginPath();
-      ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = h.stats.color;
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = h.stats.color; ctx.fill();
       ctx.lineWidth = h.isPlayer ? 4 : 2;
-      ctx.strokeStyle = h.isPlayer ? '#fde047' : '#0f172a';
-      ctx.stroke();
+      ctx.strokeStyle = h.isPlayer ? '#fde047' : '#0f172a'; ctx.stroke();
 
       ctx.font = `${h.isPlayer ? 20 : 16}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(h.stats.icon, h.x, h.y);
 
       ctx.font = 'bold 11px sans-serif';
@@ -746,46 +900,28 @@ class GameEngine {
       ctx.fillText(h.isPlayer ? '👑 LİDER' : 'BOT', h.x, h.y + r + 12);
     }
 
-    // Mermiler
     for (const p of this.projectiles) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = p.color; ctx.fill();
     }
 
-    // Düşmanlar
     for (const e of this.enemies) {
-      // Odak Hedef (Focus Target) İşareti
       if (this.focusTarget === e) {
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius + 9, 0, Math.PI * 2);
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.radius + 9, 0, Math.PI * 2);
+        ctx.strokeStyle = '#fde047'; ctx.lineWidth = 3; ctx.stroke();
       }
-
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-      ctx.fillStyle = e.stunTimer > 0 ? '#60a5fa' : e.color;
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#090d16';
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+      ctx.fillStyle = e.stunTimer > 0 ? '#60a5fa' : e.color; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#090d16'; ctx.stroke();
 
       const bw = e.radius * 2;
-      ctx.fillStyle = '#090d16';
-      ctx.fillRect(e.x - e.radius, e.y - e.radius - 10, bw, 5);
-      ctx.fillStyle = '#22c55e';
-      ctx.fillRect(e.x - e.radius, e.y - e.radius - 10, bw * Math.max(0, e.hp / e.maxHp), 5);
+      ctx.fillStyle = '#090d16'; ctx.fillRect(e.x - e.radius, e.y - e.radius - 10, bw, 5);
+      ctx.fillStyle = '#22c55e'; ctx.fillRect(e.x - e.radius, e.y - e.radius - 10, bw * Math.max(0, e.hp / e.maxHp), 5);
     }
 
-    // Uçan Hasar Yazıları
     for (const ft of this.floatingTexts) {
-      ctx.font = 'bold 16px sans-serif';
-      ctx.fillStyle = ft.color;
-      ctx.textAlign = 'center';
-      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = ft.color;
+      ctx.textAlign = 'center'; ctx.fillText(ft.text, ft.x, ft.y);
     }
 
     ctx.restore();
@@ -794,10 +930,7 @@ class GameEngine {
   loop(now) {
     const dt = Math.min(0.1, (now - this.lastTime) / 1000);
     this.lastTime = now;
-    if (!this.paused) {
-      this.update(dt);
-      this.render();
-    }
+    if (!this.paused) { this.update(dt); this.render(); }
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -805,18 +938,20 @@ class GameEngine {
     document.getElementById('hpFill').style.width = `${(this.baseHp / this.maxBaseHp) * 100}%`;
     document.getElementById('hpText').textContent = `${Math.ceil(this.baseHp)}/${this.maxBaseHp}`;
     document.getElementById('waveText').textContent = `DALGA ${this.wave}`;
+    document.getElementById('goldText').textContent = `🪙 ${playerSave.gold}`;
     document.getElementById('killText').textContent = `💀 ${this.kills}`;
   }
 
   openUpgradeModal() {
     this.paused = true;
+    SaveManager.save(playerSave);
     const screen = document.getElementById('upgradeScreen');
     const container = document.getElementById('upgradeCards');
     container.innerHTML = '';
 
     const upgrades = [
-      { title: 'Komutanın Gazabı', icon: '👑', desc: 'Ana karakterinin hasarı ve Özel Yetenek gücü %35 artar.', apply: () => this.playerHero.stats.damage *= 1.35 },
-      { title: 'Senkronize Ateş', icon: '⚡', desc: 'Tüm takımın (Sen + 3 Bot) saldırı hızı %20 artar.', apply: () => this.heroes.forEach(h => h.stats.cooldown *= 0.8) },
+      { title: 'Komutanın Gazabı', icon: '👑', desc: 'Ana karakterinin hasarı %35 artar.', apply: () => this.playerHero.stats.damage *= 1.35 },
+      { title: 'Senkronize Ateş', icon: '⚡', desc: 'Tüm takımın saldırı hızı %20 artar.', apply: () => this.heroes.forEach(h => h.stats.cooldown *= 0.8) },
       { title: 'Mevzi Tahkimatı', icon: '🛡️', desc: 'Mevzi maksimum canı +50 artar ve 60 can onarılır.', apply: () => { this.maxBaseHp += 50; this.baseHp = Math.min(this.maxBaseHp, this.baseHp + 60); } }
     ];
 
@@ -837,34 +972,29 @@ class GameEngine {
 
   gameOver() {
     this.paused = true;
-    document.getElementById('gameOverStats').textContent = `Ulaşılan Dalga: ${this.wave} | Toplam Yok Edilen Düşman: ${this.kills}`;
+    playerSave.activeRun = null;
+    SaveManager.save(playerSave);
+    document.getElementById('gameOverStats').innerHTML = `Ulaşılan Dalga: <b>${this.wave}</b> (Rekor: ${playerSave.bestWave})<br>Kazanılan Toplam Altın: <b>🪙 ${playerSave.gold}</b>`;
     document.getElementById('gameOverScreen').classList.remove('hidden');
   }
 
   bindInputs() {
-    let draggingWheel = false;
-    let lastTouchAngle = 0;
+    let draggingWheel = false, lastTouchAngle = 0;
 
     this.canvas.addEventListener('pointerdown', (e) => {
       const wPos = this.screenToWorld(e.clientX, e.clientY);
-      const distFromCenter = Math.hypot(wPos.x, wPos.y);
-
-      // 1. Çemberin içine/kenarına dokunulduysa: Parmağınla Çemberi Çevirme Modu!
-      if (distFromCenter <= this.safeZoneRadius + 40) {
+      if (Math.hypot(wPos.x, wPos.y) <= this.safeZoneRadius + 40) {
         draggingWheel = true;
         lastTouchAngle = Math.atan2(wPos.y, wPos.x);
         return;
       }
-
-      // 2. Bir düşmanın üzerine dokunulduysa: Tüm Takımı O Hedefe Odakla (Focus Fire)!
       for (const en of this.enemies) {
         if (Math.hypot(en.x - wPos.x, en.y - wPos.y) <= en.radius + 25) {
           this.focusTarget = en;
-          this.addFloatingText(en.x, en.y - 25, '🎯 HEDEF İŞARETLENDİ!', '#fde047');
+          this.addFloatingText(en.x, en.y - 25, '🎯 HEDEF!', '#fde047');
           break;
         }
       }
-
       this.playerController.setAimWorldPos(wPos);
     });
 
@@ -883,11 +1013,7 @@ class GameEngine {
       }
     });
 
-    window.addEventListener('pointerup', () => {
-      draggingWheel = false;
-      this.playerController.setAimWorldPos(null);
-    });
-
+    window.addEventListener('pointerup', () => { draggingWheel = false; this.playerController.setAimWorldPos(null); });
     document.getElementById('btnRotLeft').onclick = () => this.rotateCircle(-1);
     document.getElementById('btnRotRight').onclick = () => this.rotateCircle(1);
     document.getElementById('btnSkill').onclick = () => this.triggerActiveSkill();
@@ -905,9 +1031,74 @@ class GameEngine {
   }
 }
 
+/**
+ * ============================================================================
+ * 4. ARAYÜZ VE SUPABASE SENKRONİZASYON BAŞLATICI
+ * ============================================================================
+ */
 const engine = new GameEngine(document.getElementById('gameCanvas'));
-const cardsRoot = document.getElementById('heroCards');
 
+function renderMetaUI() {
+  document.getElementById('nickInput').value = playerSave.nickname;
+  document.getElementById('uiGold').textContent = playerSave.gold;
+  document.getElementById('uiBestWave').textContent = playerSave.bestWave;
+  document.getElementById('uiTotalKills').textContent = playerSave.totalKills;
+
+  const resumeBtn = document.getElementById('btnResumeRun');
+  if (playerSave.activeRun && playerSave.activeRun.wave > 1) {
+    const r = playerSave.activeRun;
+    resumeBtn.classList.remove('hidden');
+    resumeBtn.textContent = `▶️ Kaldığın Oyundan Devam Et (${HERO_CONFIGS[r.selectedClass].name} - Dalga ${r.wave})`;
+    resumeBtn.onclick = () => {
+      document.getElementById('selectScreen').classList.add('hidden');
+      document.getElementById('hud').classList.remove('hidden');
+      document.getElementById('controls').classList.remove('hidden');
+      engine.startWithHero(r.selectedClass, r);
+    };
+  } else {
+    resumeBtn.classList.add('hidden');
+  }
+
+  const shopItems = [
+    { key: 'damageLvl', name: '⚔️ Silah Ustası', bonus: '+%10 Takım Hasarı', baseCost: 15 },
+    { key: 'hpLvl', name: '🛡️ Kale Tahkimatı', bonus: '+25 Mevzi Canı', baseCost: 12 },
+    { key: 'speedLvl', name: '⚡ Çevik Eğitim', bonus: '+%6 Saldırı Hızı', baseCost: 20 }
+  ];
+
+  const shopGrid = document.getElementById('shopGrid');
+  shopGrid.innerHTML = '';
+  shopItems.forEach(item => {
+    const lvl = playerSave.upgrades[item.key];
+    const cost = Math.round(item.baseCost * Math.pow(1.45, lvl));
+    const div = document.createElement('div');
+    div.className = 'shop-item';
+    div.innerHTML = `
+      <h4>${item.name} (Sv. ${lvl})</h4>
+      <span>${item.bonus}</span>
+      <button class="btn-buy" ${playerSave.gold < cost ? 'disabled' : ''}>Geliştir (🪙 ${cost})</button>
+    `;
+    div.querySelector('button').onclick = async () => {
+      if (playerSave.gold >= cost) {
+        playerSave.gold -= cost;
+        playerSave.upgrades[item.key]++;
+        renderMetaUI();
+        await SaveManager.save(playerSave);
+      }
+    };
+    shopGrid.appendChild(div);
+  });
+}
+
+document.getElementById('btnSaveNick').onclick = async () => {
+  const val = document.getElementById('nickInput').value.trim();
+  if (val.length >= 2) {
+    playerSave.nickname = val;
+    await SaveManager.save(playerSave);
+    await SaveManager.fetchLeaderboard();
+  }
+};
+
+const cardsRoot = document.getElementById('heroCards');
 Object.values(HERO_CONFIGS).forEach(cfg => {
   const card = document.createElement('div');
   card.className = 'card';
@@ -922,10 +1113,17 @@ Object.values(HERO_CONFIGS).forEach(cfg => {
     document.getElementById('selectScreen').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     document.getElementById('controls').classList.remove('hidden');
-    engine.startWithHero(cfg.type);
+    engine.startWithHero(cfg.type, null);
   };
   cardsRoot.appendChild(card);
 });
+
+(async () => {
+  renderMetaUI();
+  playerSave = await SaveManager.syncFromCloud(playerSave);
+  renderMetaUI();
+  await SaveManager.fetchLeaderboard();
+})();
 </script>
 </body>
 </html>
