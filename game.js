@@ -1,6 +1,40 @@
 /**
  * ============================================================================
- * 0. SENTETİK SES MOTORU (WEB AUDIO API - SIFIR HARİCİ DOSYA)
+ * 0. iOS PWA OTOMATİK GÜNCELLEME YÖNETİCİSİ (SERVICE WORKER & CACHE BUSTER)
+ * ============================================================================
+ */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      // iPhone'da uygulama arka plandan öne her geldiğinde güncellemeyi denetle!
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update();
+      });
+    } catch (e) {}
+  });
+
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+}
+
+// Sağ üstteki Manuel "🔄" Yenileme Butonu (Önbelleği tamamen silip son sürümü çeker)
+document.getElementById('btnForceUpdate').onclick = async () => {
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  }
+  window.location.href = window.location.pathname + '?t=' + Date.now();
+};
+
+/**
+ * ============================================================================
+ * 1. SENTETİK SES MOTORU (WEB AUDIO API)
  * ============================================================================
  */
 class SoundFX {
@@ -60,7 +94,7 @@ class SoundFX {
 
 /**
  * ============================================================================
- * 1. SUPABASE BAĞLANTISI VE KAYIT YÖNETİCİSİ (EKİPMAN & KIŞLA DESTEKLİ)
+ * 2. SUPABASE AUTH (E-POSTA İLE GİRİŞ) VE KAYIT YÖNETİCİSİ
  * ============================================================================
  */
 const SUPABASE_URL = 'https://gzwjzfkqwypspmqxncqg.supabase.co';
@@ -70,10 +104,13 @@ const supabaseClient = SUPABASE_URL.startsWith('http')
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
+let currentAuthUser = null;
+
 class SaveManager {
-  static STORAGE_KEY = 'CIRCLE_DEFENSE_PRO_V4';
+  static STORAGE_KEY = 'CIRCLE_DEFENSE_PRO_V5';
 
   static getOrCreatePlayerId() {
+    if (currentAuthUser && currentAuthUser.id) return currentAuthUser.id;
     let pid = localStorage.getItem('CD_PLAYER_ID');
     if (!pid) {
       pid = 'cmd_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
@@ -89,14 +126,13 @@ class SaveManager {
       FIRE_MAGE: { dmg: 0, spd: 0, spec: 0 },
       LIGHTNING_MAGE: { dmg: 0, spd: 0, spec: 0 },
       BASE: { hp: 0, armor: 0 },
-      INVENTORY: { owned: [], equipped: [] } // Satın alınan ve kuşanılan ekipmanlar
+      INVENTORY: { owned: [], equipped: [] }
     };
   }
 
   static normalizeUpgrades(rawUpg) {
     const def = this.getDefaultUpgrades();
     if (!rawUpg) return def;
-    // Eski SWORDSMAN kaydı varsa PALADIN'e aktar
     const paladinData = rawUpg.PALADIN || rawUpg.SWORDSMAN || def.PALADIN;
     return {
       PALADIN: { ...def.PALADIN, ...paladinData },
@@ -125,7 +161,7 @@ class SaveManager {
 
   static loadLocal() {
     try {
-      const raw = localStorage.getItem(this.STORAGE_KEY) || localStorage.getItem('CIRCLE_DEFENSE_HARDCORE_V3');
+      const raw = localStorage.getItem(this.STORAGE_KEY) || localStorage.getItem('CIRCLE_DEFENSE_PRO_V4');
       if (!raw) return this.getDefaultData();
       const parsed = JSON.parse(raw);
       return {
@@ -143,6 +179,7 @@ class SaveManager {
   }
 
   static async save(data) {
+    if (currentAuthUser) data.playerId = currentAuthUser.id;
     this.saveLocal(data);
     const badge = document.getElementById('cloudStatus');
     if (!supabaseClient) return;
@@ -163,25 +200,28 @@ class SaveManager {
         }, { onConflict: 'player_id' });
 
       if (error) throw error;
-      if (badge) { badge.textContent = '☁️ Supabase Senkronize'; badge.style.color = '#4ade80'; }
+      if (badge) { badge.textContent = '☁️ Senkronize'; badge.style.color = '#4ade80'; }
     } catch (err) {
-      if (badge) { badge.textContent = '⚠️ Yerel Kayıt Aktif'; badge.style.color = '#fbbf24'; }
+      if (badge) { badge.textContent = '⚠️ Yerel Kayıt'; badge.style.color = '#fbbf24'; }
     }
   }
 
   static async syncFromCloud(localData) {
     if (!supabaseClient) return localData;
+    const targetId = currentAuthUser ? currentAuthUser.id : localData.playerId;
+    localData.playerId = targetId;
+
     try {
       const { data, error } = await supabaseClient
         .from('player_saves')
         .select('*')
-        .eq('player_id', localData.playerId)
+        .eq('player_id', targetId)
         .maybeSingle();
 
       if (error) throw error;
       if (data) {
         const merged = {
-          playerId: data.player_id,
+          playerId: targetId,
           nickname: data.nickname || localData.nickname,
           gold: Math.max(data.gold, localData.gold),
           bestWave: Math.max(data.best_wave, localData.bestWave),
@@ -232,7 +272,7 @@ let playerSave = SaveManager.loadLocal();
 
 /**
  * ============================================================================
- * 2. YENİLENMİŞ 4 KARAKTER SINIFI (PALADİN DAHİL) & ÇİFT AKTİF YETENEK
+ * 3. KARAKTER SINIFLARI, KIŞLA VE EKİPMAN MARKETİ
  * ============================================================================
  */
 const HERO_CONFIGS = {
@@ -270,11 +310,6 @@ const HERO_CONFIGS = {
   }
 };
 
-/**
- * ============================================================================
- * 3. KIŞLA MAĞAZA AĞACI VE CEPHANELİK (EKİPMAN MARKETİ)
- * ============================================================================
- */
 const SHOP_TREE = {
   PALADIN: {
     label: '🛡️ Kutsal Paladin',
@@ -317,7 +352,6 @@ const SHOP_TREE = {
   }
 };
 
-// CEPHANELİK: Satın Alınıp Kuşanılabilen (Equip) 8 Efsanevi Ekipman
 const EQUIPMENT_ITEMS = [
   { id: 'vampire_fang', name: '🧛 Vampir Dişi', cost: 45, desc: 'Öldürülen her 12 düşmanda bir Mevzi +6 Can yeniler.' },
   { id: 'midas_ring', name: '💍 Midas Yüzüğü', cost: 60, desc: 'Canavarlardan altın düşme şansını %40 artırır!' },
@@ -377,7 +411,7 @@ class Hero {
     this.engine = engine;
     this.cooldownTimer = 0;
     this.attackCount = 0;
-    this.buffTimer = 0; // [E] yeteneği güçlendirme süresi
+    this.buffTimer = 0;
     this.aimDir = { x: Math.cos(slotAngle), y: Math.sin(slotAngle) };
 
     const upg = playerSave.upgrades[this.stats.type] || { dmg: 0, spd: 0, spec: 0 };
@@ -395,7 +429,6 @@ class Hero {
       this.stats.stunDuration += upg.spec * 0.15;
     }
 
-    // Ekipman Bonusları
     if (hasEquip('war_horn')) this.stats.cooldown *= 0.88;
     if (hasEquip('arcane_lens')) {
       this.stats.range = Math.round(this.stats.range * 1.15);
@@ -415,7 +448,7 @@ class Hero {
 
   getEffectiveCooldown() {
     let cd = this.stats.cooldown * (this.engine.formation === 'ATTACK' ? 0.78 : 1.0);
-    if (this.buffTimer > 0 && this.stats.type === 'ARCHER') cd *= 0.35; // Gölge Yaylımı: 3x Hız!
+    if (this.buffTimer > 0 && this.stats.type === 'ARCHER') cd *= 0.35;
     return cd;
   }
 
@@ -436,7 +469,6 @@ class Hero {
       this.aimDir = dir;
       if (this.cooldownTimer <= 0) {
         this.attackCount++;
-        // Kutsal Paladin Pasifi: Her 4. vuruşta Mevziyi iyileştirir!
         if (this.stats.type === 'PALADIN' && this.attackCount % 4 === 0) {
           this.engine.healBase(this.paladinHealAmount || 3);
         }
@@ -471,7 +503,6 @@ class Enemy {
 
   update(dt, vortexPos) {
     if (this.stunTimer > 0) { this.stunTimer -= dt; return; }
-    // Eğer Şimşek Büyücüsünün [E] Manyetik Girdabı aktifse düşmanlar girdaba çekilir!
     if (vortexPos && this.type !== 'BOSS') {
       const dx = vortexPos.x - this.x, dy = vortexPos.y - this.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -489,7 +520,7 @@ class Enemy {
 
 /**
  * ============================================================================
- * 5. ANA OYUN MOTORU (ÇİFT YETENEK, EKİPMAN, KOMBO VE EKRAN SARSINTISI)
+ * 5. ANA OYUN MOTORU
  * ============================================================================
  */
 class GameEngine {
@@ -504,9 +535,9 @@ class GameEngine {
     this.formation = 'BALANCED';
     this.baseHp = 100;
     this.maxBaseHp = 100;
-    this.invulnerableTimer = 0; // Paladin [E] İlahi Kalkan süresi
-    this.lavaRingTimer = 0;     // Ateş Büyücüsü [E] Lav Halkası süresi
-    this.vortex = null;         // Şimşek Büyücüsü [E] Manyetik Girdap objesi
+    this.invulnerableTimer = 0;
+    this.lavaRingTimer = 0;
+    this.vortex = null;
 
     this.kills = 0;
     this.runGoldEarned = 0;
@@ -629,7 +660,6 @@ class GameEngine {
     return hasEquip('chrono_hourglass') ? 0.8 : 1.0;
   }
 
-  // 1. AKTİF YETENEK [Q]
   triggerSkill1() {
     if (this.skill1Cooldown > 0 || !this.playerHero || this.paused) return;
     this.skill1Cooldown = 5.5 * this.getCooldownMult();
@@ -678,7 +708,6 @@ class GameEngine {
     }
   }
 
-  // 2. TAKTİKSEL SINIF YETENEĞİ [E]
   triggerSkill2() {
     if (this.skill2Cooldown > 0 || !this.playerHero || this.paused) return;
     this.skill2Cooldown = 9.0 * this.getCooldownMult();
@@ -700,7 +729,6 @@ class GameEngine {
     }
   }
 
-  // TAM TAKIM KOMUTAN ULTİSİ [R]
   triggerUltimate() {
     if (this.ultiCooldown > 0 || !this.playerHero || this.paused) return;
     this.ultiCooldown = 12.0 * this.getCooldownMult();
@@ -757,20 +785,16 @@ class GameEngine {
     this.rotationOffset += (this.targetRotationOffset - this.rotationOffset) * Math.min(1, dt * 10);
     if (this.screenShake > 0) this.screenShake = Math.max(0, this.screenShake - dt * 30);
 
-    // Kombo sayacı
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) { this.comboCount = 0; this.updateHUD(); }
     }
 
-    // Aktif Alan Yetenekleri (İlahi Kalkan, Lav Halkası, Manyetik Girdap)
     if (this.invulnerableTimer > 0) this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
     if (this.lavaRingTimer > 0) {
       this.lavaRingTimer = Math.max(0, this.lavaRingTimer - dt);
       for (const e of this.enemies) {
-        if (Math.hypot(e.x, e.y) <= this.safeZoneRadius + 55) {
-          e.hp -= 55 * dt;
-        }
+        if (Math.hypot(e.x, e.y) <= this.safeZoneRadius + 55) e.hp -= 55 * dt;
       }
     }
     if (this.vortex) {
@@ -778,7 +802,6 @@ class GameEngine {
       if (this.vortex.timer <= 0) this.vortex = null;
     }
 
-    // Buton Cooldown Güncellemeleri
     const updateBtn = (cd, btnId, txtId, readyLbl) => {
       document.getElementById(btnId).classList.toggle('cooldown', cd > 0);
       document.getElementById(txtId).textContent = cd > 0 ? cd.toFixed(1) + 's' : readyLbl;
@@ -838,7 +861,6 @@ class GameEngine {
         this.comboCount++;
         this.comboTimer = 3.5;
 
-        // Vampir Dişi Ekipmanı: Her 12 leşte +6 Can
         if (hasEquip('vampire_fang') && this.kills % 12 === 0) this.healBase(6);
 
         if (e.goldValue > 0) {
@@ -941,7 +963,6 @@ class GameEngine {
       ctx.beginPath(); ctx.moveTo(-half, i); ctx.lineTo(half, i); ctx.stroke();
     }
 
-    // Manyetik Girdap Çizimi
     if (this.vortex) {
       ctx.beginPath();
       ctx.arc(this.vortex.x, this.vortex.y, 85, 0, Math.PI * 2);
@@ -950,7 +971,6 @@ class GameEngine {
       ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 3; ctx.stroke();
     }
 
-    // Lav Halkası Çizimi
     if (this.lavaRingTimer > 0) {
       ctx.beginPath();
       ctx.arc(0, 0, this.safeZoneRadius + 48, 0, Math.PI * 2);
@@ -966,7 +986,6 @@ class GameEngine {
       ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.setLineDash([]);
     }
 
-    // Mevzi Çemberi
     ctx.beginPath();
     ctx.arc(0, 0, this.safeZoneRadius, 0, Math.PI * 2);
     ctx.fillStyle = this.invulnerableTimer > 0 ? 'rgba(253, 224, 71, 0.3)' : 'rgba(15, 23, 42, 0.85)';
@@ -1124,7 +1143,6 @@ class GameEngine {
     document.getElementById('btnSkill2').onclick = () => this.triggerSkill2();
     document.getElementById('btnUlti').onclick = () => this.triggerUltimate();
 
-    // Oyun İçi Ses ve Duraklatma / Güvenli Çıkış
     document.getElementById('btnMute').onclick = () => {
       SoundFX.muted = !SoundFX.muted;
       document.getElementById('btnMute').textContent = SoundFX.muted ? '🔇' : '🔊';
@@ -1161,13 +1179,12 @@ class GameEngine {
 
 /**
  * ============================================================================
- * 6. 4 SEKMELİ KARARGÂH, KIŞLA VE EKİPMAN MARKETİ YÖNETİMİ
+ * 6. MENÜLER VE E-POSTA İLE GİRİŞ / KAYIT YÖNETİMİ
  * ============================================================================
  */
 const engine = new GameEngine(document.getElementById('gameCanvas'));
 let activeShopTab = 'PALADIN';
 
-// Alt Menü Sekme Geçişleri
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -1184,7 +1201,27 @@ function renderAllMenus() {
   document.getElementById('uiBestWave').textContent = playerSave.bestWave;
   document.getElementById('uiTotalKills').textContent = playerSave.totalKills;
 
-  // Savaş Sekmesi: Yarıda Kalan Oyun & Kuşanılan Ekipman Özeti
+  // Hesap Durumu Gösterimi
+  const authBtn = document.getElementById('btnOpenAuth');
+  const accInfo = document.getElementById('accountInfoBox');
+  if (currentAuthUser) {
+    authBtn.textContent = '✅ ' + (currentAuthUser.email.split('@')[0]);
+    authBtn.style.borderColor = '#4ade80';
+    authBtn.style.color = '#4ade80';
+    accInfo.innerHTML = `Bağlı E-posta: <b>${currentAuthUser.email}</b> <button class="btn-small" style="background:#ef4444; margin-left:8px;" id="btnLogout">Çıkış Yap</button>`;
+    const logoutBtn = document.getElementById('btnLogout');
+    if (logoutBtn) {
+      logoutBtn.onclick = async () => {
+        await supabaseClient.auth.signOut();
+        currentAuthUser = null;
+        location.reload();
+      };
+    }
+  } else {
+    authBtn.textContent = '📧 Giriş Yap';
+    accInfo.innerHTML = `Şu an misafir modundasın. Tüm cihazlardan erişmek için üstteki <b>📧 Giriş Yap</b> butonuna tıkla.`;
+  }
+
   const resumeBtn = document.getElementById('btnResumeRun');
   if (playerSave.activeRun && playerSave.activeRun.wave > 1) {
     const r = playerSave.activeRun;
@@ -1325,12 +1362,7 @@ function renderArmory() {
       btnHtml = `<button class="btn-buy equipped-btn" ${inv.equipped.length >= 3 ? 'disabled' : ''}>${inv.equipped.length >= 3 ? 'Yuvalar Dolu (3/3)' : 'Kuşan (Equip)'}</button>`;
     }
 
-    div.innerHTML = `
-      <h4>${item.name}</h4>
-      <span>${item.desc}</span>
-      ${btnHtml}
-    `;
-
+    div.innerHTML = `<h4>${item.name}</h4><span>${item.desc}</span>${btnHtml}`;
     div.querySelector('button').onclick = async () => {
       if (!isOwned && playerSave.gold >= item.cost) {
         SoundFX.play('coin');
@@ -1358,8 +1390,73 @@ document.getElementById('btnSaveNick').onclick = async () => {
   }
 };
 
+// E-POSTA İLE GİRİŞ / KAYIT ETKİLEŞİMLERİ
+const authModal = document.getElementById('authModal');
+const authMsg = document.getElementById('authMsg');
+
+document.getElementById('btnOpenAuth').onclick = () => {
+  authMsg.textContent = '';
+  authModal.classList.remove('hidden');
+};
+document.getElementById('btnCloseAuth').onclick = () => {
+  authModal.classList.add('hidden');
+};
+
+document.getElementById('btnDoLogin').onclick = async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || password.length < 6) {
+    authMsg.textContent = '⚠️ Geçerli bir e-posta ve en az 6 haneli şifre girin.';
+    return;
+  }
+  authMsg.textContent = '⏳ Giriş yapılıyor...';
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) {
+    authMsg.textContent = '❌ Hata: ' + error.message;
+  } else if (data.user) {
+    currentAuthUser = data.user;
+    playerSave = await SaveManager.syncFromCloud(playerSave);
+    renderAllMenus();
+    authModal.classList.add('hidden');
+  }
+};
+
+document.getElementById('btnDoSignup').onclick = async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || password.length < 6) {
+    authMsg.textContent = '⚠️ Geçerli bir e-posta ve en az 6 haneli şifre girin.';
+    return;
+  }
+  authMsg.textContent = '⏳ Hesap oluşturuluyor...';
+  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+  if (error) {
+    authMsg.textContent = '❌ Hata: ' + error.message;
+  } else if (data.user) {
+    if (data.session) {
+      currentAuthUser = data.user;
+      playerSave.nickname = email.split('@')[0].slice(0, 14);
+      await SaveManager.save(playerSave);
+      renderAllMenus();
+      authModal.classList.add('hidden');
+    } else {
+      authMsg.textContent = '✅ Kayıt başarılı! E-postana gelen onay linkine tıklayıp giriş yapabilirsin.';
+    }
+  }
+};
+
+// Oyun Açılışında Oturumu ve Bulut Verisini Kontrol Et
 (async () => {
   renderAllMenus();
+  if (supabaseClient) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session && session.user) {
+      currentAuthUser = session.user;
+    } else if (!localStorage.getItem('AUTH_PROMPT_SHOWN')) {
+      localStorage.setItem('AUTH_PROMPT_SHOWN', '1');
+      authModal.classList.remove('hidden');
+    }
+  }
   playerSave = await SaveManager.syncFromCloud(playerSave);
   renderAllMenus();
   await SaveManager.fetchLeaderboard();
